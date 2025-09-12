@@ -87,22 +87,23 @@ class MultiPackageUpdateAction(Action):
                                      branch_name: str, default_branch: str) -> tuple[List[str], List[Dict[str, str]]]:
         """Process all packages in all target files and return list of modified files and updated packages."""
         modified_files = []
-        updated_packages = []
+        updated_package_names = set()
 
         for file_path in target_files:
-            # Get file content
             content = self.strategy.get_file_content(repo_id, file_path, default_branch)
             if content is None:
                 continue
 
-            # Process all packages for this file
             file_modified, file_updated_packages = self._update_file_with_all_packages(
                 repo_id, file_path, content, branch_name
             )
 
             if file_modified:
                 modified_files.append(file_path)
-                updated_packages.extend(file_updated_packages)
+                for package in file_updated_packages:
+                    updated_package_names.add(package['name'])
+
+        updated_packages = [pkg for pkg in self.packages if pkg['name'] in updated_package_names]
 
         return modified_files, updated_packages
 
@@ -185,6 +186,7 @@ class MultiPackageUpdateAction(Action):
             return f"Update {package['name']} to version {package['version']}"
         else:
             package_names = [pkg['name'] for pkg in packages_to_use]
+            return f"Update packages: {', '.join(package_names)}"
 
     def _generate_commit_message(self, updated_packages: List[Dict[str, str]]) -> str:
         """Generate a commit message for multi-package updates."""
@@ -193,7 +195,8 @@ class MultiPackageUpdateAction(Action):
             return f"Update {package['name']} to version {package['version']}"
         else:
             package_list = ", ".join([f"{pkg['name']} to {pkg['version']}" for pkg in updated_packages])
-            return f"Update packages: {', '.join(package_names)}"
+            return f"Update {len(updated_packages)} packages: {package_list}"
+
 
     def _generate_file_commit_message(self, updated_packages: List[Dict[str, str]], file_path: str) -> str:
         """Generate a commit message for file-specific updates."""
