@@ -1,0 +1,29 @@
+{
+  "gitlab_url": "https://gitlab.company.com",
+  
+  "use_local_clone": false,
+
+  "packages_to_update": [
+    {
+      "name": "Microsoft.EntityFrameworkCore",
+      "version": "7.0.5"
+    },
+    {
+      "name": "Newtonsoft.Json",
+      "version": "13.0.3"
+    }
+  ],
+  "report_file": "reports/entity-framework-update.md",
+  "verify_ssl": false,
+  "allow_downgrade": false,
+  "repositories": [
+    "123",
+    "456",
+    "backend-team/user-service",
+    "backend-team/order-service",
+    "backend-team/payment-service",
+    "microservices/inventory-api",
+    "microservices/notification-api",
+    "legacy/old-webapi"
+  ]
+}

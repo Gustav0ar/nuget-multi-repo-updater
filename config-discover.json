@@ -1,0 +1,34 @@
+{
+  "gitlab_url": "https://gitlab.company.com",
+  
+  "use_local_clone": false,
+
+  "packages_to_update": [
+    {
+      "name": "Microsoft.EntityFrameworkCore",
+      "version": "7.0.5"
+    },
+    {
+      "name": "Newtonsoft.Json",
+      "version": "13.0.3"
+    }
+  ],
+  "report_file": "reports/entity-framework-update.md",
+  "verify_ssl": false,
+  "allow_downgrade": false,
+  "discover": {
+    "group": "backend-team",
+    "owned_only": false,
+    "member_only": false,
+    "include_archived": false,
+    "exclude_forks": true,
+    "ignore_patterns": [
+      "*-test*",
+      "*-demo",
+      "*-ui",
+      "*-frontend",
+      "playground-*",
+      "*-docs"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+gitlab_url: 'https://gitlab.company.com'
+token: 'your_personal_access_token'
+
+# Repository processing mode
+use_local_clone: false  # Set to true to use local cloning mode (default: false for API mode)
+
+# NuGet package details
+packages_to_update:
+  - name: 'Microsoft.EntityFrameworkCore'
+    version: '7.0.5'
+  - name: 'Newtonsoft.Json'
+    version: '13.0.3'
+
+report_file: 'reports/entity-framework-update.md'
+verify_ssl: false # Disable SSL verification for self-signed certificates
+allow_downgrade: false
+
+repositories:
+  # Repository IDs
+  - '123'
+  - '456'
+  - '789'
+
+  # Project paths - Backend APIs
+  - 'backend-team/user-service'
+  - 'backend-team/order-service'
+  - 'backend-team/payment-service'
+  - 'backend-team/auth-service'
+
+  # Microservices
+  - 'microservices/inventory-api'
+  - 'microservices/notification-api'
+  - 'microservices/gateway-api'
+
+  # Legacy projects
+  - 'legacy/old-webapi'
+  - 'legacy/admin-portal'
+
+  # Integration services
+  - 'integration/data-sync-service'
+  - 'integration/reporting-service'

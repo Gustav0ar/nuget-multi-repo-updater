@@ -1,0 +1,18 @@
+# Repository List File Example
+# One repository ID or path per line
+# Lines starting with # are ignored
+
+# Numeric repository IDs
+123
+456
+789
+
+# Repository paths
+group/web-api-1
+group/web-api-2
+group/shared-library
+
+# Mixed format is also supported
+1001
+another-group/microservice-a
+another-group/microservice-b

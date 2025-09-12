@@ -1,0 +1,32 @@
+gitlab_url: 'https://gitlab.company.com'
+
+# Repository processing mode
+use_local_clone: false  # Set to true to use legacy local cloning mode (default: false for API mode)
+
+# NuGet package details
+packages_to_update:
+  - name: 'Microsoft.EntityFrameworkCore'
+    version: '7.0.5'
+  - name: 'Newtonsoft.Json'
+    version: '13.0.3'
+
+report_file: 'reports/entity-framework-update.md'
+verify_ssl: false # Disable SSL verification for self-signed certificates
+allow_downgrade: false
+
+# Discovery mode configuration
+discover:
+  group: 'backend-team' # GitLab group/namespace to discover repositories from
+  owned_only: false # Only include repositories owned by the user
+  member_only: false # Only include repositories where user is a member
+  include_archived: false # Include archived repositories
+  exclude_forks: true # Exclude forked repositories
+  ignore_patterns: # Patterns to ignore (case-insensitive wildcards)
+    - '*-test*' # Ignore any repo with 'test' in the name
+    - '*-demo' # Ignore demo repositories
+    - '*-ui' # Ignore UI/frontend repositories
+    - '*-frontend' # Ignore frontend repositories
+    - 'playground-*' # Ignore playground repositories
+    - '*-docs' # Ignore documentation repositories
+    - '*-ux' # Ignore UX repositories
+    - '*-mfe' # Ignore micro-frontend repositories
