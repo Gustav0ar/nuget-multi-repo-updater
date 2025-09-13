@@ -182,3 +182,20 @@ class ApiStrategy(RepositoryStrategy):
             logging.info(f"Rollback: Reverted file {file_path}")
         except Exception as e:
             logging.warning(f"Failed to revert file during rollback: {e}")
+        """Create a merge request using API."""
+        return self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
+
+    def cleanup_branch(self, repo_id: str, branch_name: str) -> bool:
+        """Clean up branch using API - not all providers support this directly."""
+        # Note: Not all SCM providers have a delete_branch method in the current interface
+        # This could be implemented as needed by specific providers
+        logging.info(f"Branch cleanup not implemented for {branch_name}")
+        return True
+
+    def prepare_repository(self, repo_url: str, repo_id: str) -> bool:
+        """No preparation needed for API strategy."""
+        return True
+
+    def cleanup_repository(self, repo_id: str) -> None:
+        """No cleanup needed for API strategy."""
+        pass

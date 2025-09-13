@@ -1,7 +1,11 @@
 gitlab_url: 'https://gitlab.company.com'
 
 # Repository processing mode
-use_local_clone: false  # Set to true to use legacy local cloning mode (default: false for API mode)
+use_local_clone: false # Set to true to use legacy local cloning mode (default: false for API mode)
+
+# Code migration settings
+enable_code_migration: true
+migration_config_file: 'migration-config.yml'
 
 # NuGet package details
 packages_to_update:
@@ -30,3 +34,12 @@ discover:
     - '*-docs' # Ignore documentation repositories
     - '*-ux' # Ignore UX repositories
     - '*-mfe' # Ignore micro-frontend repositories
+
+# Advanced migration settings
+csharp_migration_tool_path: './CSharpMigrationTool'
+rollback_settings:
+  strict_migration_mode: false
+  preserve_package_updates: true
+  cleanup_on_failure: true
+  max_rollback_attempts: 3
+  rollback_timeout_seconds: 300

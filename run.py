@@ -39,6 +39,11 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     update_parser.add_argument('--use-local-clone', action='store_true', help='Clone repository locally for modifications (legacy mode)')
     update_parser.add_argument('--no-verify-ssl', action='store_true', help='Disable SSL certificate verification')
     update_parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='INFO', help='Logging level')
+    
+    # Migration-specific arguments
+    update_parser.add_argument('--enable-migrations', action='store_true', help='Enable code migrations')
+    update_parser.add_argument('--migration-config', help='Path to migration configuration file')
+    update_parser.add_argument('--strict-migration-mode', action='store_true', help='Rollback everything if migrations fail')
 
     # Sub-parser for the check-status action
     status_parser = subparsers.add_parser('check-status', help='Check the status of merge requests')

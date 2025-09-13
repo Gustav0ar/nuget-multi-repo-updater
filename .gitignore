@@ -38,6 +38,13 @@ Thumbs.db
 
 # My custom additions
 temp/**.*
+
+# .NET Core / C# Migration Tool
+CSharpMigrationTool/bin/
+CSharpMigrationTool/obj/
+CSharpMigrationTool/*.user
+CSharpMigrationTool/.vs/
+CSharpMigrationTool/packages/
 multi_package_MRs*.json
 *.json.md
 *.yaml.md

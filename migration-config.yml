@@ -1,0 +1,72 @@
+migrations:
+  - id: 'entityframework-remove-obsolete'
+    package_name: 'Microsoft.EntityFrameworkCore'
+    description: 'Remove obsolete Entity Framework methods when upgrading from 6.x to 7.x'
+    version_conditions:
+      - type: 'greater_than'
+        version: '6.0.0'
+    rules:
+      - name: 'Remove Entity.Property() calls'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'Property'
+            containing_namespace: 'Microsoft.EntityFrameworkCore'
+        action:
+          type: 'remove_invocation'
+          strategy: 'smart_chain_aware'
+      - name: 'Remove obsolete DbContext methods'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'EnsureCreated'
+            containing_namespace: 'Microsoft.EntityFrameworkCore'
+        action:
+          type: 'remove_invocation'
+          strategy: 'smart_chain_aware'
+
+  - id: 'newtonsoft-method-rename'
+    package_name: 'Newtonsoft.Json'
+    description: 'Rename deprecated JsonConvert methods when upgrading to 13.x'
+    version_conditions:
+      - type: 'greater_than_or_equal'
+        version: '13.0.0'
+    rules:
+      - name: 'Rename SerializeObjectAsync'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'SerializeObjectAsync'
+            containing_namespace: 'Newtonsoft.Json'
+        action:
+          type: 'replace_method_name'
+          new_name: 'SerializeAsync'
+      - name: 'Rename DeserializeObjectAsync'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'DeserializeObjectAsync'
+            containing_namespace: 'Newtonsoft.Json'
+        action:
+          type: 'replace_method_name'
+          new_name: 'DeserializeAsync'
+
+  - id: 'system-text-json-migration'
+    package_name: 'System.Text.Json'
+    description: 'Migrate from Newtonsoft.Json to System.Text.Json patterns'
+    version_conditions:
+      - type: 'greater_than_or_equal'
+        version: '6.0.0'
+    rules:
+      - name: 'Replace JsonConvert.SerializeObject'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'SerializeObject'
+            containing_type: 'JsonConvert'
+        action:
+          type: 'replace_method_name'
+          new_name: 'JsonSerializer.Serialize'
+      - name: 'Replace JsonConvert.DeserializeObject'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'DeserializeObject'
+            containing_type: 'JsonConvert'
+        action:
+          type: 'replace_method_name'
+          new_name: 'JsonSerializer.Deserialize'

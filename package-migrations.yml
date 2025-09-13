@@ -1,0 +1,60 @@
+migrations:
+  - id: 'ef-core-v7-migration'
+    package_name: 'Microsoft.EntityFrameworkCore'
+    description: 'Migration rules for Entity Framework Core v7+ updates'
+    version_conditions:
+      - type: 'greater_than'
+        version: '6.0.0'
+    rules:
+      - name: 'Remove obsolete AddDelegatingHandler method'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'AddDelegatingHandler'
+        action:
+          type: 'remove_invocation'
+          strategy: 'smart_chain_aware'
+
+      - name: 'Update deprecated ConfigureDbContext calls'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'ConfigureDbContext'
+        action:
+          type: 'replace_invocation'
+          replacement_method: 'AddDbContext'
+          strategy: 'preserve_parameters'
+
+  - id: 'newtonsoft-json-migration'
+    package_name: 'Newtonsoft.Json'
+    description: 'Migration rules for Newtonsoft.Json updates'
+    version_conditions:
+      - type: 'greater_than_or_equal'
+        version: '13.0.0'
+    rules:
+      - name: 'Update JsonConvert.SerializeObject calls'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'SerializeObject'
+            containing_type: 'JsonConvert'
+        action:
+          type: 'add_attribute'
+          attribute_name: 'JsonIgnore'
+          strategy: 'conditional'
+
+  - id: 'aspnet-core-v7-migration'
+    package_name: 'Microsoft.AspNetCore.App'
+    description: 'Migration rules for ASP.NET Core v7+ updates'
+    version_conditions:
+      - type: 'range'
+        version: '7.0.0'
+        max_version: '8.0.0'
+    rules:
+      - name: 'Replace IHostingEnvironment with IWebHostEnvironment'
+        target_nodes:
+          - type: 'FieldDeclaration'
+            identifier: 'IHostingEnvironment'
+          - type: 'ParameterDeclaration'
+            identifier: 'IHostingEnvironment'
+        action:
+          type: 'replace_type'
+          replacement_type: 'IWebHostEnvironment'
+          strategy: 'preserve_variable_names'

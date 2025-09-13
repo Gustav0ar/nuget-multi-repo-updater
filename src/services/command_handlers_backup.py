@@ -3,6 +3,7 @@ Command handlers for different application actions with migration support.
 """
 import logging
 import sys
+import json
 from typing import List, Dict, Any
 
 from src.actions.multi_package_update_action import MultiPackageUpdateAction
@@ -73,6 +74,7 @@ class UpdateNugetCommandHandler:
 
         # Handle dry run mode
         if args.dry_run:
+            # Get report file from args or config for dry run
             dry_run_report_file = getattr(args, 'report_file', None)
             if not dry_run_report_file and self.config_service:
                 dry_run_report_file = self.config_service.get('report_file')
@@ -80,7 +82,7 @@ class UpdateNugetCommandHandler:
             dry_run_service.simulate_package_updates(
                 repositories, packages_to_update, args.allow_downgrade, dry_run_report_file
             )
-            return
+            return  # dry_run_service exits the program
 
         # Execute actual updates with migration support
         self._execute_updates_with_migrations(repositories, packages_to_update, args, 
@@ -134,6 +136,7 @@ class UpdateNugetCommandHandler:
                     successful_results.append(result)
                     logging.info(f"Successfully processed repository {repo_info['id']}")
                     
+                    # Log migration information if available
                     if result.get('migration_result'):
                         migration_info = result['migration_result']
                         if migration_info['success'] and migration_info['applied_rules']:
@@ -171,6 +174,7 @@ class UpdateNugetCommandHandler:
             try:
                 report_generator = ReportGenerator()
                 
+                # Enhance report with migration and rollback information
                 enhanced_results = []
                 for result in successful_results:
                     enhanced_result = result.copy()
@@ -181,6 +185,7 @@ class UpdateNugetCommandHandler:
 
                 report_generator.generate_markdown_report(enhanced_results, report_file)
                 
+                # Add rollback information if any
                 if rollback_reports:
                     self._append_rollback_report(report_file, rollback_reports)
                     
@@ -189,6 +194,7 @@ class UpdateNugetCommandHandler:
             except Exception as e:
                 logging.error(f"Failed to generate enhanced report: {e}")
 
+        # Log summary
         total_repos = len(successful_results) + len(failed_repositories)
         logging.info(f"Processing complete: {len(successful_results)}/{total_repos} repositories succeeded")
         
@@ -226,6 +232,7 @@ class UpdateNugetCommandHandler:
                     logging.error(f"Invalid package format: {p}. Expected 'name@version'.")
                     sys.exit(1)
         else:
+            # Fallback to config for multiple package update
             if self.config_service:
                 packages_to_update = self.config_service.get('packages_to_update', [])
             if not packages_to_update:
@@ -239,14 +246,18 @@ class UpdateNugetCommandHandler:
         repositories = []
 
         if args.repositories:
+            # From command line
             repositories = repository_manager.get_repositories_from_command_line(args.repositories)
         elif args.repo_file:
+            # From file
             repositories = repository_manager.get_repositories_from_file(args.repo_file)
         elif args.discover_group:
+            # Discovery mode
             repositories = repository_manager.discover_repositories(
                 args.discover_group, args.owned_only, args.member_only, args.include_archived
             )
 
+            # Apply discovery filters
             if args.ignore_patterns:
                 ignored_patterns = args.ignore_patterns.split(',')
                 repositories = repository_manager.filter_repositories_by_ignore_patterns(repositories, ignored_patterns)
@@ -254,12 +265,14 @@ class UpdateNugetCommandHandler:
             if args.exclude_forks:
                 repositories = repository_manager.filter_out_forks(repositories)
 
+            # Ask for user confirmation for discovery mode
             if repositories:
                 user_interaction.confirm_discovered_repositories(repositories)
             else:
                 logging.info("No repositories found matching the discovery criteria")
                 return []
         else:
+            # Fallback to config
             if self.config_service:
                 repositories = repository_manager.get_repositories_from_config(self.config_service)
             if not repositories:
@@ -277,6 +290,11 @@ class CheckStatusCommandHandler:
 
     def execute(self, args: Any) -> None:
         """Execute the check-status command."""
+        # Import here to avoid circular imports
+        from src.services.repository_manager import RepositoryManager
+
+        repository_manager = RepositoryManager(self.scm_provider)
+
         action = StatusCheckAction(self.scm_provider)
         result = action.execute(
             args.tracking_file,
@@ -291,3 +309,161 @@ class CheckStatusCommandHandler:
         else:
             logging.error("Status check failed")
             sys.exit(1)
+
+        if args.repositories:
+            # From command line
+            repositories = repository_manager.get_repositories_from_command_line(args.repositories)
+        elif args.repo_file:
+            # From file
+            repositories = repository_manager.get_repositories_from_file(args.repo_file)
+        elif args.discover_group:
+            # Discovery mode
+            repositories = repository_manager.discover_repositories(
+                args.discover_group, args.owned_only, args.member_only, args.include_archived
+            )
+            repositories = repository_manager.filter_repositories(
+                repositories, args.ignore_patterns, args.exclude_forks
+            )
+            repositories = user_interaction.get_user_confirmation(repositories)
+        else:
+            # From config file
+            if self.config_service:
+                repo_configs = self.config_service.get('repositories', [])
+                repositories = repository_manager.get_repositories_from_config(repo_configs)
+            if not repositories:
+                logging.error("No repositories specified. Use --repositories, --repo-file, --discover-group, or provide repositories in config file.")
+                sys.exit(1)
+
+        return repositories
+
+    def _execute_updates(self, repositories: List[Dict], packages_to_update: List[Dict], args: Any) -> None:
+        """Execute the actual package updates."""
+        report_generator = ReportGenerator()
+        merge_requests_data = []
+
+        for repo in repositories:
+            # Handle both repository objects and IDs
+            if isinstance(repo, dict):
+                project = repo
+            else:
+                # This handles the case where repo is a string ID
+                project = self.scm_provider.get_project(str(repo))
+
+            if project:
+                self._process_repository(
+                    project, packages_to_update, args, report_generator, merge_requests_data
+                )
+
+        # Generate reports and save tracking data
+        self._finalize_execution(args, report_generator, merge_requests_data)
+
+    def _process_repository(self, project: Dict, packages_to_update: List[Dict], args: Any,
+                          report_generator: ReportGenerator, merge_requests_data: List[Dict]) -> None:
+        """Process a single repository for package updates."""
+        repo_url = project['http_url_to_repo']
+        default_branch = project['default_branch']
+        local_path = f"./temp/{project['name']}"
+
+        git_service = GitService(local_path)
+
+        # Note: We cannot reliably check for existing MRs here because we don't know
+        # which packages will actually be updated until we process the files.
+        # The MultiPackageUpdateAction will handle existing MR detection based on actual updates.
+
+        # Determine whether to use local clone mode
+        use_local_clone = getattr(args, 'use_local_clone', False)
+        if not use_local_clone and self.config_service:
+            use_local_clone = self.config_service.get('use_local_clone', False)
+
+        # Use MultiPackageUpdateAction to handle all packages in a single transaction
+        action = MultiPackageUpdateAction(git_service, self.scm_provider, packages_to_update,
+                                        args.allow_downgrade, use_local_clone)
+        mr_info = action.execute(repo_url, project['id'], default_branch)
+
+        if mr_info:
+            updated_packages = mr_info.get('updated_packages', packages_to_update)
+
+            # Check if this was an existing MR or a new one
+            is_existing = 'iid' in mr_info and mr_info.get('state') != 'opened'
+
+            for package_info in updated_packages:
+                status = 'Existing' if is_existing else 'Success'
+                message = f"Merge request {'found' if is_existing else 'created'}: {mr_info['web_url']}"
+
+                report_generator.add_entry(
+                    project['name'], package_info['name'], package_info['version'], status, message
+                )
+                merge_requests_data.append({
+                    'repository_id': project['id'],
+                    'repository_name': project['name'],
+                    'package_name': package_info['name'],
+                    'new_version': package_info['version'],
+                    'merge_request_url': mr_info['web_url'],
+                    'merge_request_iid': mr_info['iid'],
+                    'target_branch': mr_info.get('target_branch', default_branch),
+                    'source_branch': mr_info.get('source_branch', 'unknown'),
+                    'existed': is_existing
+                })
+
+            # Log success message
+            if len(updated_packages) == 1:
+                action_word = 'Found existing' if is_existing else 'Successfully created'
+                logging.info(f"{action_word} merge request for {updated_packages[0]['name']} in {project['name']}")
+            else:
+                package_names = [pkg['name'] for pkg in updated_packages]
+                action_word = 'Found existing' if is_existing else 'Successfully created'
+                logging.info(f"{action_word} merge request for {len(updated_packages)} packages ({', '.join(package_names)}) in {project['name']}")
+        else:
+            # If no MR was created/found, add failure entries for all packages
+            for package_info in packages_to_update:
+                report_generator.add_entry(
+                    project['name'], package_info['name'], package_info['version'], 'Failed',
+                    'No updates needed or failed to create merge request'
+                )
+
+    def _finalize_execution(self, args: Any, report_generator: ReportGenerator,
+                          merge_requests_data: List[Dict]) -> None:
+        """Finalize execution by generating reports and saving tracking data."""
+        # Get report file from args or config
+        report_file = getattr(args, 'report_file', None)
+        if not report_file and self.config_service:
+            report_file = self.config_service.get('report_file')
+
+        if report_file:
+            try:
+                report_generator.generate(report_file)
+            except PermissionError:
+                logging.error(f"Failed to generate report: Permission denied to write to {report_file}")
+
+        if merge_requests_data:
+            # Generate unique tracking file name with timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            tracking_file = f"multi_package_MRs_{timestamp}.json"
+
+            with open(tracking_file, 'w') as f:
+                json.dump({'merge_requests': merge_requests_data}, f, indent=2)
+            print(f"Merge request tracking data saved to: {tracking_file}")
+
+
+class CheckStatusCommandHandler:
+    """Handles the check-status command execution."""
+
+    def __init__(self, scm_provider: ScmProvider):
+        self.scm_provider = scm_provider
+
+    def execute(self, args: Any) -> None:
+        """Execute the check-status command."""
+        action = StatusCheckAction(self.scm_provider, args.tracking_file, args.report_only)
+        action.execute()
+
+        if args.report_file:
+            action.generate_status_report(args.report_file)
+
+        if args.html_dashboard:
+            action.generate_html_visualization(args.html_dashboard)
+
+        if args.filter_status:
+            filtered_mrs = action.filter_by_status(args.filter_status)
+            for mr in filtered_mrs:
+                print(f"- {mr['repository_name']}: {mr['merge_request_url']}")

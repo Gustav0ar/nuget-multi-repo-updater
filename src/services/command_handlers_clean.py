@@ -3,6 +3,7 @@ Command handlers for different application actions with migration support.
 """
 import logging
 import sys
+import json
 from typing import List, Dict, Any
 
 from src.actions.multi_package_update_action import MultiPackageUpdateAction

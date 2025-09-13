@@ -2,7 +2,11 @@ gitlab_url: 'https://gitlab.company.com'
 token: 'your_personal_access_token'
 
 # Repository processing mode
-use_local_clone: false  # Set to true to use local cloning mode (default: false for API mode)
+use_local_clone: false # Set to true to use local cloning mode (default: false for API mode)
+
+# Code migration settings
+enable_code_migration: true
+migration_config_file: 'migration-config.yml'
 
 # NuGet package details
 packages_to_update:
@@ -39,3 +43,12 @@ repositories:
   # Integration services
   - 'integration/data-sync-service'
   - 'integration/reporting-service'
+
+# Advanced migration settings
+csharp_migration_tool_path: './CSharpMigrationTool'
+rollback_settings:
+  strict_migration_mode: false
+  preserve_package_updates: true
+  cleanup_on_failure: true
+  max_rollback_attempts: 3
+  rollback_timeout_seconds: 300

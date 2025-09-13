@@ -2,6 +2,9 @@
   "gitlab_url": "https://gitlab.company.com",
   
   "use_local_clone": false,
+  
+  "enable_code_migration": true,
+  "migration_config_file": "migration-config.yml",
 
   "packages_to_update": [
     {
@@ -30,5 +33,13 @@
       "playground-*",
       "*-docs"
     ]
+  },
+  "csharp_migration_tool_path": "./CSharpMigrationTool",
+  "rollback_settings": {
+    "strict_migration_mode": false,
+    "preserve_package_updates": true,
+    "cleanup_on_failure": true,
+    "max_rollback_attempts": 3,
+    "rollback_timeout_seconds": 300
   }
 }

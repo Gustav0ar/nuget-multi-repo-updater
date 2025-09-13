@@ -234,3 +234,48 @@ class LocalCloneStrategy(RepositoryStrategy):
                 logging.info(f"Rollback: Deleted file {file_path}")
         except Exception as e:
             logging.warning(f"Failed to delete file during rollback: {e}")
+        """Update a file in the local repository."""
+        try:
+            with open(file_path, 'w') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to update file {file_path}: {e}")
+            return False
+
+    def create_merge_request(self, repo_id: str, source_branch: str, target_branch: str,
+                           title: str, description: str) -> Optional[Dict]:
+        """Create a merge request using the SCM provider."""
+        return self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
+
+    def cleanup_branch(self, repo_id: str, branch_name: str) -> bool:
+        """Clean up branch - for local strategy, this would require additional implementation."""
+        # Note: Branch cleanup for local repositories would require additional git operations
+        # This could be implemented by deleting the local branch and optionally the remote branch
+        logging.info(f"Branch cleanup not fully implemented for local strategy: {branch_name}")
+        return True
+
+    def prepare_repository(self, repo_url: str, repo_id: str) -> bool:
+        """Clone the repository locally."""
+        try:
+            self.git_service.clone(repo_url)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to clone repository {repo_url}: {e}")
+            return False
+
+    def cleanup_repository(self, repo_id: str) -> None:
+        """Clean up local repository resources."""
+        # Git service should handle cleanup of local files
+        pass
+
+    def commit_and_push_changes(self, modified_files: List[str], commit_message: str, branch_name: str) -> bool:
+        """Commit and push changes for local strategy."""
+        try:
+            self.git_service.add(modified_files)
+            self.git_service.commit(commit_message)
+            self.git_service.push('origin', branch_name)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to commit and push changes: {e}")
+            return False
