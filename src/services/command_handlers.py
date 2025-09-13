@@ -255,13 +255,14 @@ class UpdateNugetCommandHandler:
                 repositories = repository_manager.filter_out_forks(repositories)
 
             if repositories:
-                user_interaction.confirm_discovered_repositories(repositories)
+                user_interaction.display_discovered_repositories(repositories)
             else:
                 logging.info("No repositories found matching the discovery criteria")
                 return []
         else:
             if self.config_service:
-                repositories = repository_manager.get_repositories_from_config(self.config_service)
+                repo_configs = self.config_service.get('repositories', [])
+                repositories = repository_manager.get_repositories_from_config(repo_configs)
             if not repositories:
                 logging.error("No repositories specified. Use --repositories, --repo-file, --discover-group, or specify repositories in config file.")
                 sys.exit(1)
@@ -277,16 +278,28 @@ class CheckStatusCommandHandler:
 
     def execute(self, args: Any) -> None:
         """Execute the check-status command."""
-        action = StatusCheckAction(self.scm_provider)
-        result = action.execute(
-            args.tracking_file,
-            args.report_only,
-            args.html_dashboard,
-            args.filter_status,
-            args.report_file
+        action = StatusCheckAction(
+            self.scm_provider, 
+            args.tracking_file, 
+            getattr(args, 'report_only', False)
         )
+        
+        success = action.execute()
 
-        if result:
+        # Generate report if requested
+        if hasattr(args, 'report_file') and args.report_file:
+            action.generate_status_report(args.report_file)
+            
+        # Generate HTML dashboard if requested
+        if hasattr(args, 'html_dashboard') and args.html_dashboard:
+            action.generate_html_visualization(args.html_dashboard)
+            
+        # Filter by status if requested
+        if hasattr(args, 'filter_status') and args.filter_status:
+            filtered_mrs = action.filter_by_status(args.filter_status)
+            logging.info(f"Found {len(filtered_mrs)} merge requests with status '{args.filter_status}'")
+
+        if success:
             logging.info("Status check completed successfully")
         else:
             logging.error("Status check failed")

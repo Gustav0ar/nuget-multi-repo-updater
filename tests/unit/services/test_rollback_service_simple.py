@@ -55,17 +55,19 @@ class TestRepositoryUpdateTransaction:
     
     def setup_method(self):
         """Set up test fixtures."""
-        self.transaction = RepositoryUpdateTransaction('test-repo')
+        from unittest.mock import Mock
+        self.mock_strategy = Mock()
+        self.transaction = RepositoryUpdateTransaction('test-repo', self.mock_strategy)
         
     def test_transaction_creation(self):
         """Test creating a transaction."""
-        assert self.transaction.repository_path == 'test-repo'
+        assert self.transaction.repo_id == 'test-repo'
         assert len(self.transaction.rollback_actions) == 0
         
     def test_add_rollback_action(self):
         """Test adding rollback action."""
         action = lambda: print("rollback")
-        self.transaction.add_rollback_action("Test action", action)
+        self.transaction.add_rollback_action(action, "Test action")
         
         assert len(self.transaction.rollback_actions) == 1
         
@@ -79,8 +81,8 @@ class TestRepositoryUpdateTransaction:
         def action2():
             executed_actions.append("action2")
         
-        self.transaction.add_rollback_action("Action 1", action1)
-        self.transaction.add_rollback_action("Action 2", action2)
+        self.transaction.add_rollback_action(action1, "Action 1")
+        self.transaction.add_rollback_action(action2, "Action 2")
         
         result = self.transaction.execute_rollback()
         
@@ -95,8 +97,9 @@ class TestTransactionException:
     
     def test_transaction_exception_creation(self):
         """Test creating a transaction exception."""
-        transaction = RepositoryUpdateTransaction('test-repo')
-        exception = TransactionException('Test error', transaction)
+        from src.services.rollback_service import RollbackResult
+        rollback_result = RollbackResult()
+        exception = TransactionException('Test error', rollback_result)
         
         assert str(exception) == 'Test error'
-        assert exception.transaction == transaction
+        assert exception.rollback_result == rollback_result

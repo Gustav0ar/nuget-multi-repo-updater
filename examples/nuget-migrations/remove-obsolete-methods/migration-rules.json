@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "name": "Remove obsolete AddDelegatingHandler calls",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "AddDelegatingHandler"
+        }
+      ],
+      "action": {
+        "type": "remove_invocation",
+        "strategy": "smart_chain_aware"
+      }
+    }
+  ]
+}

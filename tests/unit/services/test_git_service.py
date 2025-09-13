@@ -25,33 +25,45 @@ class TestGitService:
 
     def test_init(self, git_service):
         """Test GitService initialization."""
-        assert git_service.local_path == "/tmp/test-repo"
+        assert git_service.base_dir == "/tmp/test-repo"
+        assert git_service.local_path is None
         assert git_service.repo is None
 
+    @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_success(self, mock_clone_from, git_service):
+    def test_clone_success(self, mock_clone_from, mock_mkdtemp, git_service):
         """Test successful repository cloning."""
         mock_repo = Mock()
+        mock_repo.active_branch.name = "main"
         mock_clone_from.return_value = mock_repo
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir"
 
         git_service.clone("https://example.com/repo.git")
 
-        mock_clone_from.assert_called_once_with("https://example.com/repo.git", "/tmp/test-repo")
+        mock_mkdtemp.assert_called_once_with(prefix="nuget-updater-", dir="/tmp/test-repo")
+        mock_clone_from.assert_called_once_with("https://example.com/repo.git", "/tmp/test-clone-dir")
         assert git_service.repo == mock_repo
+        assert git_service.local_path == "/tmp/test-clone-dir"
 
+    @patch('shutil.rmtree')
+    @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_failure(self, mock_clone_from, git_service):
+    def test_clone_failure(self, mock_clone_from, mock_mkdtemp, mock_rmtree, git_service):
         """Test repository cloning failure."""
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir"
         mock_clone_from.side_effect = git.GitCommandError("clone", "Clone failed")
 
         with pytest.raises(git.GitCommandError):
             git_service.clone("https://example.com/invalid-repo.git")
 
+        mock_rmtree.assert_called_once_with("/tmp/test-clone-dir", ignore_errors=True)
+
         assert git_service.repo is None
 
     def test_create_branch_no_repo(self, git_service):
         """Test branch creation when no repo is loaded."""
-        git_service.create_branch("feature-branch")
+        with pytest.raises(ValueError, match="Repository not initialized"):
+            git_service.create_branch("feature-branch")
 
         # Should handle gracefully when repo is None
         assert git_service.repo is None
@@ -203,7 +215,8 @@ class TestGitService:
         with pytest.raises(git.GitCommandError):
             git_service.push("origin", "main")
 
-    def test_workflow_integration(self, git_service):
+    @patch('tempfile.mkdtemp')
+    def test_workflow_integration(self, mock_mkdtemp, git_service):
         """Test complete workflow integration."""
         # Mock the repo and its components
         mock_repo = Mock()
@@ -212,11 +225,13 @@ class TestGitService:
         mock_remote = Mock()
         mock_commit = Mock()
         mock_commit.hexsha = "abc123"
+        mock_repo.active_branch.name = "main"
 
         mock_repo.git = mock_git
         mock_repo.index = mock_index
         mock_repo.remotes = {"origin": mock_remote}
         mock_index.commit.return_value = mock_commit
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir"
 
         with patch('git.Repo.clone_from', return_value=mock_repo):
             # Execute complete workflow
@@ -232,16 +247,19 @@ class TestGitService:
         mock_index.commit.assert_called_once_with("Add new features")
         mock_remote.push.assert_called_once_with("feature-branch")
 
-    def test_multiple_operations_after_clone(self, git_service):
+    @patch('tempfile.mkdtemp')
+    def test_multiple_operations_after_clone(self, mock_mkdtemp, git_service):
         """Test multiple operations on the same repo instance."""
         mock_repo = Mock()
         mock_git = Mock()
         mock_index = Mock()
         mock_remote = Mock()
+        mock_repo.active_branch.name = "main"
 
         mock_repo.git = mock_git
         mock_repo.index = mock_index
         mock_repo.remotes = {"origin": mock_remote}
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir"
 
         with patch('git.Repo.clone_from', return_value=mock_repo):
             git_service.clone("https://example.com/repo.git")
@@ -263,18 +281,23 @@ class TestGitService:
         assert mock_index.add.call_count == 2
         assert mock_index.commit.call_count == 2
 
+    @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_overwrites_existing_repo(self, mock_clone_from, git_service):
+    def test_clone_overwrites_existing_repo(self, mock_clone_from, mock_mkdtemp, git_service):
         """Test that cloning overwrites existing repo instance."""
         # First clone
         mock_repo1 = Mock()
+        mock_repo1.active_branch.name = "main"
         mock_clone_from.return_value = mock_repo1
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir1"
         git_service.clone("https://example.com/repo1.git")
         assert git_service.repo == mock_repo1
 
         # Second clone should overwrite
         mock_repo2 = Mock()
+        mock_repo2.active_branch.name = "main"
         mock_clone_from.return_value = mock_repo2
+        mock_mkdtemp.return_value = "/tmp/test-clone-dir2"
         git_service.clone("https://example.com/repo2.git")
         assert git_service.repo == mock_repo2
         assert git_service.repo != mock_repo1

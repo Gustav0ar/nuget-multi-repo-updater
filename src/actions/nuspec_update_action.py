@@ -170,6 +170,6 @@ class CSProjUpdater:
         logging.info(f"Found {len(csproj_files)} .csproj files")
         return csproj_files
 
-    def update_package_version(self, csproj_content: str, allow_downgrade: bool):
+    def update_package_version(self, csproj_content: str, allow_downgrade: bool = False):
         """Legacy method - delegates to PackageFileUpdater."""
         return self._updater.update_csproj_package_version(csproj_content, allow_downgrade)

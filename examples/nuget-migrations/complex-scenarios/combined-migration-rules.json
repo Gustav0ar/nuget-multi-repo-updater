@@ -1,0 +1,88 @@
+{
+  "rules": [
+    {
+      "name": "Remove obsolete AddDelegatingHandler calls",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "AddDelegatingHandler"
+        }
+      ],
+      "action": {
+        "type": "remove_invocation",
+        "strategy": "smart_chain_aware"
+      }
+    },
+    {
+      "name": "Replace AddMvc with AddControllers",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "AddMvc"
+        }
+      ],
+      "action": {
+        "type": "replace_invocation",
+        "replacement_method": "AddControllers",
+        "preserve_parameters": true
+      }
+    },
+    {
+      "name": "Update IHostingEnvironment to IHostEnvironment",
+      "target_nodes": [
+        {
+          "type": "parameterdeclaration",
+          "parameter_type": "IHostingEnvironment"
+        }
+      ],
+      "action": {
+        "type": "replace_parameter_type",
+        "replacement_type": "IHostEnvironment"
+      }
+    },
+    {
+      "name": "Replace JsonConvert.SerializeObject with JsonSerializer.Serialize",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "SerializeObject",
+          "containing_type": "JsonConvert"
+        }
+      ],
+      "action": {
+        "type": "replace_invocation",
+        "replacement_code": "JsonSerializer.Serialize",
+        "preserve_parameters": true
+      }
+    },
+    {
+      "name": "Replace JsonConvert.DeserializeObject with JsonSerializer.Deserialize",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "DeserializeObject",
+          "containing_type": "JsonConvert"
+        }
+      ],
+      "action": {
+        "type": "replace_invocation",
+        "replacement_code": "JsonSerializer.Deserialize",
+        "preserve_parameters": true
+      }
+    },
+    {
+      "name": "Rename FromSql to FromSqlRaw",
+      "target_nodes": [
+        {
+          "type": "invocationexpression",
+          "method_name": "FromSql"
+        }
+      ],
+      "action": {
+        "type": "replace_invocation",
+        "replacement_method": "FromSqlRaw",
+        "preserve_parameters": true
+      }
+    }
+  ]
+}
