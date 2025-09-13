@@ -4,18 +4,23 @@ Dry run simulation service for previewing package update operations.
 import logging
 import sys
 import re
+import os
 from typing import List, Dict, Any
 from packaging.version import parse as parse_version
 
 from src.providers.scm_provider import ScmProvider
 from src.services.report_generator import ReportGenerator
+from src.services.dry_run_code_migration_service import DryRunCodeMigrationService
+from src.services.migration_configuration_service import MigrationConfigurationService
 
 
 class DryRunService:
     """Handles dry run simulations of package update operations."""
 
-    def __init__(self, scm_provider: ScmProvider):
+    def __init__(self, scm_provider: ScmProvider, migration_config_service: MigrationConfigurationService = None):
         self.scm_provider = scm_provider
+        self.migration_config_service = migration_config_service
+        self.migration_service = DryRunCodeMigrationService("./CSharpMigrationTool")
 
     def simulate_package_updates(self, repositories: List[Dict], packages_to_update: List[Dict],
                                 allow_downgrade: bool = False, report_file: str = None) -> None:
@@ -31,12 +36,14 @@ class DryRunService:
         # Create a dry-run report generator
         dry_run_report = ReportGenerator()
         dry_run_summary = {
-            'total_repos': len(repositories),
+            'total_repos': 0,
             'would_create_mrs': 0,
             'existing_mrs': 0,
             'no_changes': 0,
             'errors': 0,
-            'total_files_to_modify': 0
+            'total_files_to_modify': 0,
+            'total_migration_files': 0,
+            'migration_errors': 0
         }
 
         for repo in repositories:
@@ -45,7 +52,9 @@ class DryRunService:
             )
 
         self._print_dry_run_summary(dry_run_summary, dry_run_report, report_file)
-        sys.exit(0)
+        # Allow tests to disable exit behavior
+        if not hasattr(self, '_disable_exit') or not self._disable_exit:
+            sys.exit(0)
 
     def _simulate_repository_processing(self, repo: Dict, packages_to_update: List[Dict],
                                       allow_downgrade: bool, dry_run_report: ReportGenerator,
@@ -104,17 +113,18 @@ class DryRunService:
         print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
         print(f"   🌿 Would create branch: update-{package_name.lower().replace('.', '-')}-to-{new_version.replace('.', '_')}")
 
-        # Simulate .csproj file analysis
-        self._simulate_csproj_analysis(
+        # Simulate .csproj file analysis and migration analysis
+        migration_info = self._simulate_csproj_and_migration_analysis(
             project, package_name, new_version, allow_downgrade,
             dry_run_report, dry_run_summary
         )
 
-    def _simulate_csproj_analysis(self, project: Dict, package_name: str, new_version: str,
-                                allow_downgrade: bool, dry_run_report: ReportGenerator,
-                                dry_run_summary: Dict[str, int]) -> None:
-        """Simulate .csproj file analysis."""
+    def _simulate_csproj_and_migration_analysis(self, project: Dict, package_name: str, new_version: str,
+                                              allow_downgrade: bool, dry_run_report: ReportGenerator,
+                                              dry_run_summary: Dict[str, int]) -> Dict[str, Any]:
+        """Simulate .csproj file analysis and migration rule analysis."""
         print(f"   📄 Would scan for .csproj files...")
+        migration_info = None
 
         # Try to get repository tree to find .csproj files
         try:
@@ -122,21 +132,36 @@ class DryRunService:
             if tree:
                 csproj_files = [item['path'] for item in tree
                               if item['type'] == 'blob' and item['path'].endswith('.csproj')]
+                cs_files = [item['path'] for item in tree
+                           if item['type'] == 'blob' and item['path'].endswith('.cs')]
 
                 if csproj_files:
-                    print(f"   📋 Found {len(csproj_files)} .csproj files:")
+                    print(f"   📋 Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
+                    
+                    # Analyze .csproj files for package updates
                     files_would_modify = self._analyze_csproj_files(
                         project, csproj_files, package_name, new_version, allow_downgrade
                     )
 
+                    # Analyze potential migrations
+                    migration_info = self._analyze_potential_migrations(
+                        project, package_name, new_version, cs_files, dry_run_summary
+                    )
+
                     dry_run_summary['total_files_to_modify'] += files_would_modify
 
-                    if files_would_modify > 0:
-                        self._print_would_create_mr(project, package_name, new_version, files_would_modify)
+                    if files_would_modify > 0 or (migration_info and migration_info.get('would_modify_files')):
+                        total_changes = files_would_modify + len(migration_info.get('would_modify_files', []))
+                        self._print_would_create_mr(project, package_name, new_version, total_changes)
                         dry_run_summary['would_create_mrs'] += 1
+                        
+                        details = f"Would modify {files_would_modify} .csproj files"
+                        if migration_info and migration_info.get('would_modify_files'):
+                            details += f" and {len(migration_info['would_modify_files'])} code files"
+                        
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
-                            'Would Create MR', f"Would modify {files_would_modify} files"
+                            'Would Create MR', details, migration_info
                         )
                     else:
                         print(f"   ➖ No changes needed")
@@ -150,18 +175,112 @@ class DryRunService:
                     dry_run_summary['no_changes'] += 1
                     dry_run_report.add_entry(
                         project['name'], package_name, new_version,
-                        'No .csproj Files', 'Repository contains no .csproj files'
+                        'No Changes', 'No .csproj files found in repository'
                     )
-            else:
-                print(f"   ❌ Could not access repository tree")
-                dry_run_summary['errors'] += 1
         except Exception as e:
             print(f"   ❌ Error analyzing repository: {e}")
             dry_run_summary['errors'] += 1
             dry_run_report.add_entry(
                 project['name'], package_name, new_version,
-                'Error', f"Could not analyze repository: {e}"
+                'Error', f"Failed to analyze repository: {str(e)}"
             )
+
+        return migration_info
+
+    def _analyze_potential_migrations(self, project: Dict, package_name: str, new_version: str,
+                                    cs_files: list, dry_run_summary: Dict[str, int]) -> Dict[str, Any]:
+        """Analyze potential code migrations for the package update."""
+        try:
+            # Get migration rules for this package
+            migration_rules = []
+            if self.migration_config_service:
+                # Get applicable migrations for this package version upgrade
+                applicable_migrations = self.migration_config_service.get_applicable_migrations(
+                    package_name, "0.0.0", new_version  # From any version to new version
+                )
+                
+                # Convert to rules format
+                for migration in applicable_migrations:
+                    for rule in migration.rules:
+                        migration_rules.append(rule.to_dict())
+            
+            # If no migrations found, return early
+            if not migration_rules:
+                print(f"   ➖ No migration rules applicable")
+                return {
+                    'has_migrations': False,
+                    'rules_applied': [],
+                    'would_modify_files': []
+                }
+            
+            # Analyze potential migrations
+            migration_result = self.migration_service.analyze_potential_migrations(
+                target_files=cs_files, 
+                migration_rules=migration_rules
+            )
+            
+            # Convert result to expected format
+            migration_info = {
+                'has_migrations': len(migration_result.applicable_rules) > 0,
+                'rules_applied': migration_result.applicable_rules,
+                'would_modify_files': migration_result.would_modify_files,
+                'potential_changes': migration_result.potential_changes,
+                'analysis_errors': migration_result.analysis_errors,
+                'summary': migration_result.summary
+            }
+            
+            if migration_info and migration_info.get('has_migrations'):
+                print(f"   🔧 Found {len(migration_info.get('rules_applied', []))} migration rules")
+                files_to_modify = migration_info.get('would_modify_files', [])
+                potential_changes = migration_info.get('potential_changes', [])
+                
+                if files_to_modify:
+                    print(f"   📝 Would modify {len(files_to_modify)} code files for migrations")
+                    dry_run_summary['total_migration_files'] += len(files_to_modify)
+                    
+                    for file_path in files_to_modify[:3]:  # Show first 3 files
+                        print(f"      • {file_path}")
+                    if len(files_to_modify) > 3:
+                        print(f"      • ... and {len(files_to_modify) - 3} more files")
+                
+                # Show code change preview
+                if potential_changes:
+                    print(f"   🔍 Code changes preview (first {min(2, len(potential_changes))} changes):")
+                    for i, change in enumerate(potential_changes[:2], 1):
+                        file_path = change.get('file', 'Unknown file')
+                        line_num = change.get('line', '?')
+                        rule_name = change.get('rule', 'Unknown rule')
+                        original = change.get('original', '')
+                        replacement = change.get('replacement', '')
+                        
+                        print(f"      Change {i} - {rule_name}")
+                        print(f"         File: {file_path}:{line_num}")
+                        if original and replacement:
+                            # Truncate long lines for console display
+                            original_short = original[:60] + "..." if len(original) > 60 else original
+                            replacement_short = replacement[:60] + "..." if len(replacement) > 60 else replacement
+                            print(f"         Before: {original_short}")
+                            print(f"         After:  {replacement_short}")
+                    
+                    if len(potential_changes) > 2:
+                        print(f"      ... and {len(potential_changes) - 2} more changes (see report for details)")
+                
+                if not files_to_modify:
+                    print(f"   ℹ️  Migration rules found but no files would be modified")
+            else:
+                print(f"   ➖ No migration rules applicable")
+                
+            return migration_info
+            
+        except Exception as e:
+            print(f"   ⚠️  Error analyzing migrations: {e}")
+            dry_run_summary['migration_errors'] += 1
+            return {
+                'has_migrations': False,
+                'error': str(e),
+                'rules_applied': [],
+                'would_modify_files': []
+            }
 
     def _analyze_csproj_files(self, project: Dict, csproj_files: List[str],
                             package_name: str, new_version: str, allow_downgrade: bool) -> int:
@@ -230,6 +349,12 @@ class DryRunService:
         print(f"➖ No changes needed: {dry_run_summary['no_changes']}")
         print(f"❌ Errors encountered: {dry_run_summary['errors']}")
         print(f"📝 Total files that would be modified: {dry_run_summary['total_files_to_modify']}")
+        
+        # Migration-specific statistics
+        if dry_run_summary.get('total_migration_files', 0) > 0:
+            print(f"🔧 Code files that would be migrated: {dry_run_summary['total_migration_files']}")
+        if dry_run_summary.get('migration_errors', 0) > 0:
+            print(f"⚠️  Migration analysis errors: {dry_run_summary['migration_errors']}")
 
         # Generate dry run report if requested
         if report_file and isinstance(report_file, str):
