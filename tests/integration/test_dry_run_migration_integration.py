@@ -393,3 +393,41 @@ class TestDryRunMigrationIntegration:
             # and has the required attributes
             assert hasattr(command_handler, 'scm_provider')
             assert hasattr(command_handler, 'config_service')
+
+    def test_dry_run_report_includes_version_changes(self, temp_config_file, mock_gitlab_provider):
+        """Test that the generated report includes old and new versions."""
+        config_service = ConfigurationService(temp_config_file)
+        
+        # No migration config service needed for this test
+        dry_run_service = DryRunService(mock_gitlab_provider, None)
+        dry_run_service._disable_exit = True
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as report_file:
+            report_path = report_file.name
+        
+        try:
+            packages_to_update = [{"name": "Microsoft.AspNetCore.Http", "version": "8.0.0"}]
+            
+            dry_run_service.simulate_package_updates(
+                repositories=[mock_gitlab_provider.discover_repositories.return_value[0]],
+                packages_to_update=packages_to_update,
+                allow_downgrade=False,
+                report_file=report_path
+            )
+            
+            import glob
+            actual_report_files = glob.glob(f"{report_path}_*")
+            assert len(actual_report_files) > 0, "Report file was not generated"
+            
+            actual_report_path = actual_report_files[0]
+            
+            with open(actual_report_path, 'r') as f:
+                report_content = f.read()
+            
+            assert "Version**: 7.0.0 → 8.0.0" in report_content
+
+        finally:
+            Path(report_path).unlink(missing_ok=True)
+            import glob
+            for report_file in glob.glob(f"{report_path}_*"):
+                Path(report_file).unlink(missing_ok=True)

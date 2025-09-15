@@ -139,9 +139,10 @@ class DryRunService:
                     print(f"   📋 Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
                     
                     # Analyze .csproj files for package updates
-                    files_would_modify = self._analyze_csproj_files(
+                    old_versions = self._analyze_csproj_files(
                         project, csproj_files, package_name, new_version, allow_downgrade
                     )
+                    files_would_modify = len(old_versions)
 
                     # Analyze potential migrations
                     migration_info = self._analyze_potential_migrations(
@@ -159,9 +160,10 @@ class DryRunService:
                         if migration_info and migration_info.get('would_modify_files'):
                             details += f" and {len(migration_info['would_modify_files'])} code files"
                         
+                        old_version_str = ', '.join(list(set(old_versions))) if old_versions else None
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
-                            'Would Create MR', details, migration_info
+                            'Would Create MR', details, migration_info, old_version=old_version_str
                         )
                     else:
                         print(f"   ➖ No changes needed")
@@ -283,9 +285,9 @@ class DryRunService:
             }
 
     def _analyze_csproj_files(self, project: Dict, csproj_files: List[str],
-                            package_name: str, new_version: str, allow_downgrade: bool) -> int:
-        """Analyze .csproj files and return count of files that would be modified."""
-        files_would_modify = 0
+                            package_name: str, new_version: str, allow_downgrade: bool) -> List[str]:
+        """Analyze .csproj files and return a list of old versions that would be modified."""
+        versions_found = []
 
         for csproj_path in csproj_files:
             print(f"      • {csproj_path}")
@@ -315,16 +317,16 @@ class DryRunService:
                                     print(f"        ⚠️  Would skip downgrade: {old_version} → {new_version}")
                                 else:
                                     print(f"        🔄 Would update: {old_version} → {new_version}")
-                                    files_would_modify += 1
+                                    versions_found.append(old_version)
                             except:
                                 print(f"        🔄 Would update: {old_version} → {new_version}")
-                                files_would_modify += 1
+                                versions_found.append(old_version)
                     else:
                         print(f"        ➖ Package not found in this file")
             except Exception as e:
                 print(f"        ⚠️  Could not analyze file: {e}")
 
-        return files_would_modify
+        return versions_found
 
     def _print_would_create_mr(self, project: Dict, package_name: str, new_version: str,
                              files_would_modify: int) -> None:
@@ -418,13 +420,17 @@ class DryRunService:
                     total_modified_files = 0
                     has_migrations = False
                     all_migration_info = {}
+                    all_old_versions = {}
                     
                     for package_info in packages_to_update:
                         # Simulate package analysis
-                        files_modified = self._analyze_csproj_files(
+                        old_versions = self._analyze_csproj_files(
                             project, csproj_files, package_info['name'], package_info['version'], allow_downgrade
                         )
-                        total_modified_files += files_modified
+                        if old_versions:
+                            all_old_versions[package_info['name']] = list(set(old_versions))
+                        
+                        total_modified_files += len(old_versions)
                         
                         # Simulate migration analysis
                         migration_info = self._analyze_potential_migrations(
@@ -463,11 +469,14 @@ class DryRunService:
                     for package_info in packages_to_update:
                         # Get migration info for this specific package
                         package_migration_info = all_migration_info.get(package_info['name'])
+                        package_old_versions = all_old_versions.get(package_info['name'])
+                        old_version_str = ', '.join(package_old_versions) if package_old_versions else None
                         
                         dry_run_report.add_entry(
                             project['name'], package_info['name'], package_info['version'],
                             'Would Create MR', f"Single transaction with {len(packages_to_update)} packages",
-                            package_migration_info
+                            package_migration_info,
+                            old_version=old_version_str
                         )
                 else:
                     print(f"   ➖ No .csproj files found")
