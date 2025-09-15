@@ -163,28 +163,32 @@ class DryRunService:
                         old_version_str = ', '.join(list(set(old_versions))) if old_versions else None
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
-                            'Would Create MR', details, migration_info, old_version=old_version_str
+                            'Would Create MR', details, migration_info, old_version=old_version_str,
+                            target_branch=project['default_branch']
                         )
                     else:
                         print(f"   ➖ No changes needed")
                         dry_run_summary['no_changes'] += 1
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
-                            'No Changes', 'Package not found or already at correct version'
+                            'No Changes', 'Package not found or already at correct version',
+                            target_branch=project['default_branch']
                         )
                 else:
                     print(f"   ❌ No .csproj files found")
                     dry_run_summary['no_changes'] += 1
                     dry_run_report.add_entry(
                         project['name'], package_name, new_version,
-                        'No Changes', 'No .csproj files found in repository'
+                        'No Changes', 'No .csproj files found in repository',
+                        target_branch=project['default_branch']
                     )
         except Exception as e:
             print(f"   ❌ Error analyzing repository: {e}")
             dry_run_summary['errors'] += 1
             dry_run_report.add_entry(
                 project['name'], package_name, new_version,
-                'Error', f"Failed to analyze repository: {str(e)}"
+                'Error', f"Failed to analyze repository: {str(e)}",
+                target_branch=project['default_branch']
             )
 
         return migration_info
@@ -441,43 +445,48 @@ class DryRunService:
                             all_migration_info[package_info['name']] = migration_info
 
                     # Simulate the two-commit workflow
-                    print(f"   ✅ Would modify {total_modified_files} files")
-                    
-                    # Commit 1: Package updates
-                    if len(packages_to_update) == 1:
-                        package_commit = f"Update {packages_to_update[0]['name']} to version {packages_to_update[0]['version']}"
-                    else:
-                        package_list = ", ".join([f"{pkg['name']} to {pkg['version']}" for pkg in packages_to_update])
-                        package_commit = f"Update {len(packages_to_update)} packages: {package_list}"
-                    print(f"   📝 Would commit package updates with message: '{package_commit}'")
-                    
-                    # Commit 2: Migrations (if applicable)
-                    if has_migrations:
-                        print(f"   🔧 Would commit migrations with message: 'Apply code migrations for updated packages'")
-                    
-                    print(f"   🚀 Would push branch to origin")
-                    print(f"   🔀 Would create merge request:")
-                    print(f"      Title: {mr_title}")
-                    print(f"      Target: {project['default_branch']}")
-                    print(f"      Source: {branch_name}")
-
-                    # Update summary
-                    dry_run_summary['would_create_mrs'] += 1
-                    dry_run_summary['total_files_to_modify'] += total_modified_files
-                    
-                    # Add report entries
-                    for package_info in packages_to_update:
-                        # Get migration info for this specific package
-                        package_migration_info = all_migration_info.get(package_info['name'])
-                        package_old_versions = all_old_versions.get(package_info['name'])
-                        old_version_str = ', '.join(package_old_versions) if package_old_versions else None
+                    if total_modified_files > 0 or has_migrations:
+                        print(f"   ✅ Would modify {total_modified_files} files")
                         
-                        dry_run_report.add_entry(
-                            project['name'], package_info['name'], package_info['version'],
-                            'Would Create MR', f"Single transaction with {len(packages_to_update)} packages",
-                            package_migration_info,
-                            old_version=old_version_str
-                        )
+                        # Commit 1: Package updates
+                        if len(packages_to_update) == 1:
+                            package_commit = f"Update {packages_to_update[0]['name']} to version {packages_to_update[0]['version']}"
+                        else:
+                            package_list = ", ".join([f"{pkg['name']} to {pkg['version']}" for pkg in packages_to_update])
+                            package_commit = f"Update {len(packages_to_update)} packages: {package_list}"
+                        print(f"   📝 Would commit package updates with message: '{package_commit}'")
+                        
+                        # Commit 2: Migrations (if applicable)
+                        if has_migrations:
+                            print(f"   🔧 Would commit migrations with message: 'Apply code migrations for updated packages'")
+                        
+                        print(f"   🚀 Would push branch to origin")
+                        print(f"   🔀 Would create merge request:")
+                        print(f"      Title: {mr_title}")
+                        print(f"      Target: {project['default_branch']}")
+                        print(f"      Source: {branch_name}")
+
+                        # Update summary
+                        dry_run_summary['would_create_mrs'] += 1
+                        dry_run_summary['total_files_to_modify'] += total_modified_files
+                        
+                        # Add report entries
+                        for package_info in packages_to_update:
+                            # Get migration info for this specific package
+                            package_migration_info = all_migration_info.get(package_info['name'])
+                            package_old_versions = all_old_versions.get(package_info['name'])
+                            old_version_str = ', '.join(package_old_versions) if package_old_versions else None
+                            
+                            dry_run_report.add_entry(
+                                project['name'], package_info['name'], package_info['version'],
+                                'Would Create MR', f"Single transaction with {len(packages_to_update)} packages",
+                                package_migration_info,
+                                old_version=old_version_str,
+                                target_branch=project['default_branch']
+                            )
+                    else:
+                        print(f"   ➖ No changes needed")
+                        dry_run_summary['no_changes'] += 1
                 else:
                     print(f"   ➖ No .csproj files found")
                     dry_run_summary['no_changes'] += 1

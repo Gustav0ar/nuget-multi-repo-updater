@@ -7,7 +7,7 @@ class ReportGenerator:
     def __init__(self):
         self.report_data = []
 
-    def add_entry(self, repo_name: str, package_name: str, new_version: str, status: str, details: str, migration_info: Optional[Dict[str, Any]] = None, old_version: Optional[str] = None):
+    def add_entry(self, repo_name: str, package_name: str, new_version: str, status: str, details: str, migration_info: Optional[Dict[str, Any]] = None, old_version: Optional[str] = None, target_branch: Optional[str] = None):
         """Add an entry to the report."""
         entry = {
             'repo_name': repo_name,
@@ -15,7 +15,8 @@ class ReportGenerator:
             'new_version': new_version,
             'status': status,
             'details': details,
-            'old_version': old_version
+            'old_version': old_version,
+            'target_branch': target_branch
         }
         
         if migration_info:
@@ -37,6 +38,8 @@ class ReportGenerator:
 
             for entry in self.report_data:
                 f.write(f"## Repository: {entry['repo_name']}\n")
+                if entry.get('target_branch'):
+                    f.write(f"- **Target Branch**: {entry['target_branch']}\n")
                 f.write(f"- **Package**: {entry['package_name']}\n")
                 if entry.get('old_version'):
                     f.write(f"  - **Version**: {entry['old_version']} → {entry['new_version']}\n")
