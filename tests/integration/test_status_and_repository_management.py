@@ -844,9 +844,9 @@ class TestDryRunServiceIntegration:
                 repositories, packages_to_update, False, None
             )
 
-            # Should analyze all repositories - each repo is processed for each package
-            # So 3 repos × 2 packages = 6 calls to get_repository_tree
-            assert mock_scm_provider_for_dry_run.get_repository_tree.call_count == 6
+            # Should analyze all repositories - each repo is processed once for all packages (single transaction)
+            # So 3 repos × 1 transaction per repo = 3 calls to get_repository_tree
+            assert mock_scm_provider_for_dry_run.get_repository_tree.call_count == 3
 
     def test_dry_run_error_handling(self, mock_scm_provider_for_dry_run):
         """Test dry run error handling when repository access fails."""

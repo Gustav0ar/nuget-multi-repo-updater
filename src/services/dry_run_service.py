@@ -76,10 +76,10 @@ class DryRunService:
         print(f"   Default Branch: {project['default_branch']}")
         print(f"   Repository URL: {project['http_url_to_repo']}")
 
-        for package_info in packages_to_update:
-            self._simulate_package_processing(
-                project, package_info, allow_downgrade, dry_run_report, dry_run_summary
-            )
+        # Process all packages together in single transaction (matches actual execution)
+        self._simulate_multi_package_transaction(
+            project, packages_to_update, allow_downgrade, dry_run_report, dry_run_summary
+        )
 
     def _simulate_package_processing(self, project: Dict, package_info: Dict,
                                    allow_downgrade: bool, dry_run_report: ReportGenerator,
@@ -363,3 +363,112 @@ class DryRunService:
 
         print(f"\n💡 To execute these changes, run the same command without --dry-run")
         print(f"{'='*80}")
+
+    def _simulate_multi_package_transaction(self, project: Dict, packages_to_update: List[Dict],
+                                          allow_downgrade: bool, dry_run_report: ReportGenerator,
+                                          dry_run_summary: Dict[str, int]) -> None:
+        """Simulate processing multiple packages as single transaction (matches actual execution)."""
+        # Generate single branch and MR title for all packages (same as MultiPackageUpdateAction)
+        if len(packages_to_update) == 1:
+            package_name = packages_to_update[0]['name'].lower().replace('.', '-')
+            version = packages_to_update[0]['version'].replace('.', '_')
+            branch_name = f"update-{package_name}-to-{version}"
+            mr_title = f"Update {packages_to_update[0]['name']} to version {packages_to_update[0]['version']}"
+        else:
+            import time
+            timestamp = int(time.time())
+            package_names = "-".join([pkg['name'].split('.')[-1].lower() for pkg in packages_to_update[:2]])
+            branch_name = f"update-{package_names}-{timestamp}"
+            mr_title = f"Update {len(packages_to_update)} NuGet packages"
+        
+        print(f"\n   📦 Packages: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
+
+        # Check for existing MR for the combined update
+        try:
+            existing_mr = self.scm_provider.check_existing_merge_request(
+                project['id'], mr_title, target_branch=project['default_branch']
+            )
+            if existing_mr:
+                print(f"   ✅ Existing MR found: {existing_mr['web_url']}")
+                print(f"      Status: {existing_mr.get('state', 'unknown')}")
+                dry_run_summary['existing_mrs'] += 1
+                return
+        except Exception as e:
+            print(f"   ⚠️  Error checking existing MR: {e}")
+
+        # Simulate single transaction workflow
+        print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
+        print(f"   🌿 Would create branch: {branch_name}")
+        print(f"   📄 Would scan for .csproj files...")
+        
+        # Simulate finding files and analyzing packages together
+        try:
+            tree = self.scm_provider.get_repository_tree(project['id'], ref=project['default_branch'])
+            if tree:
+                csproj_files = [item['path'] for item in tree if item['type'] == 'blob' and item['path'].endswith('.csproj')]
+                cs_files = [item['path'] for item in tree if item['type'] == 'blob' and item['path'].endswith('.cs')]
+                
+                if csproj_files:
+                    print(f"   📋 Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
+                    
+                    # Simulate analyzing all packages together
+                    total_modified_files = 0
+                    has_migrations = False
+                    all_migration_info = {}
+                    
+                    for package_info in packages_to_update:
+                        # Simulate package analysis
+                        files_modified = self._analyze_csproj_files(
+                            project, csproj_files, package_info['name'], package_info['version'], allow_downgrade
+                        )
+                        total_modified_files += files_modified
+                        
+                        # Simulate migration analysis
+                        migration_info = self._analyze_potential_migrations(
+                            project, package_info['name'], package_info['version'], cs_files, dry_run_summary
+                        )
+                        if migration_info and migration_info.get('has_migrations'):
+                            has_migrations = True
+                            all_migration_info[package_info['name']] = migration_info
+
+                    # Simulate the two-commit workflow
+                    print(f"   ✅ Would modify {total_modified_files} files")
+                    
+                    # Commit 1: Package updates
+                    if len(packages_to_update) == 1:
+                        package_commit = f"Update {packages_to_update[0]['name']} to version {packages_to_update[0]['version']}"
+                    else:
+                        package_list = ", ".join([f"{pkg['name']} to {pkg['version']}" for pkg in packages_to_update])
+                        package_commit = f"Update {len(packages_to_update)} packages: {package_list}"
+                    print(f"   📝 Would commit package updates with message: '{package_commit}'")
+                    
+                    # Commit 2: Migrations (if applicable)
+                    if has_migrations:
+                        print(f"   🔧 Would commit migrations with message: 'Apply code migrations for updated packages'")
+                    
+                    print(f"   🚀 Would push branch to origin")
+                    print(f"   🔀 Would create merge request:")
+                    print(f"      Title: {mr_title}")
+                    print(f"      Target: {project['default_branch']}")
+                    print(f"      Source: {branch_name}")
+
+                    # Update summary
+                    dry_run_summary['would_create_mrs'] += 1
+                    dry_run_summary['total_files_to_modify'] += total_modified_files
+                    
+                    # Add report entries
+                    for package_info in packages_to_update:
+                        # Get migration info for this specific package
+                        package_migration_info = all_migration_info.get(package_info['name'])
+                        
+                        dry_run_report.add_entry(
+                            project['name'], package_info['name'], package_info['version'],
+                            'Would Create MR', f"Single transaction with {len(packages_to_update)} packages",
+                            package_migration_info
+                        )
+                else:
+                    print(f"   ➖ No .csproj files found")
+                    dry_run_summary['no_changes'] += 1
+        except Exception as e:
+            print(f"   ❌ Error analyzing repository: {e}")
+            dry_run_summary['errors'] += 1
