@@ -440,6 +440,48 @@ class TestUpdateNugetCommandHandler:
         with pytest.raises(SystemExit):
             self.handler.execute(args)
 
+    @patch('src.services.repository_manager.RepositoryManager')
+    @patch('src.services.dry_run_service.DryRunService')
+    @patch('src.services.user_interaction_service.UserInteractionService')
+    @patch('src.services.command_handlers.MultiPackageUpdateAction')
+    def test_enable_migrations_from_config(self, mock_action, mock_user_interaction, mock_dry_run, mock_repo_manager):
+        """Test that enable_migrations is correctly read from config file."""
+        args = Namespace(
+            packages=['Package1@1.0.0'],
+            repositories=['123'],
+            repo_file=None,
+            discover_group=None,
+            dry_run=False,
+            allow_downgrade=False,
+            report_file=None,
+            max_repositories=None,
+            use_local_clone=False,
+            enable_migrations=None,  # Not provided via args
+            strict_migration_mode=False,
+            migration_config=None
+        )
+
+        mock_repo_manager_instance = mock_repo_manager.return_value
+        mock_repo_manager_instance.get_repositories_from_command_line.return_value = self.sample_repositories
+
+        # Mock config service to return migration_settings
+        def mock_config_get(key, default=None):
+            if key == 'migration_settings':
+                return {'enabled': True}
+            if key == 'packages_to_update':
+                return []
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_config_get
+
+        with patch('src.services.command_handlers.MigrationConfigurationService'):
+            self.handler.execute(args)
+
+        # Verify that MultiPackageUpdateAction is called with enable_migrations=True
+        mock_action.assert_called_once()
+        action_args, action_kwargs = mock_action.call_args
+        assert action_kwargs['enable_migrations'] is True
+
 
 class TestCheckStatusCommandHandler:
     """Test suite for CheckStatusCommandHandler."""

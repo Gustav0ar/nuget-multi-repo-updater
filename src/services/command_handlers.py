@@ -38,10 +38,19 @@ class UpdateNugetCommandHandler:
 
         # Initialize migration support if enabled
         migration_config_service = None
-        enable_migrations = getattr(args, 'enable_migrations', False)
-        
-        if not enable_migrations and self.config_service:
-            enable_migrations = self.config_service.get('enable_code_migrations', False)
+        enable_migrations = getattr(args, 'enable_migrations', None)
+
+        if enable_migrations is None and self.config_service:
+            migration_settings = self.config_service.get('migration_settings', {})
+            if isinstance(migration_settings, dict):
+                enable_migrations = migration_settings.get('enabled')
+
+            if enable_migrations is None:
+                # Fallback to old key for backward compatibility
+                enable_migrations = self.config_service.get('enable_code_migrations', False)
+
+        if enable_migrations is None:
+            enable_migrations = False
             
         if enable_migrations:
             migration_config_file = self._get_migration_config_file(args)
