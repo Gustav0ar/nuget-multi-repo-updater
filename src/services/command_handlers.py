@@ -183,7 +183,7 @@ class UpdateNugetCommandHandler:
                         enhanced_result['migration_summary'] = result['migration_result']['summary']
                     enhanced_results.append(enhanced_result)
 
-                report_generator.generate_markdown_report(enhanced_results, report_file)
+                report_generator.generate_markdown_report(report_file, results=enhanced_results)
                 
                 if rollback_reports:
                     self._append_rollback_report(report_file, rollback_reports)

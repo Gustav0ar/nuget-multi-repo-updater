@@ -364,7 +364,7 @@ class DryRunService:
 
         # Generate dry run report if requested
         if report_file and isinstance(report_file, str):
-            report_filename = dry_run_report.generate(report_file)
+            report_filename = dry_run_report.generate_markdown_report(report_file)
             print(f"\n📄 Dry run report saved to: {report_filename}")
 
         print(f"\n💡 To execute these changes, run the same command without --dry-run")

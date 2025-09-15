@@ -113,12 +113,12 @@ class TestUpdateNugetCommandHandler:
         # Verify
         mock_repo_manager_instance.get_repositories_from_command_line.assert_called_once_with(['123'])
         mock_action.assert_called_once()
-        mock_report_instance.generate_markdown_report.assert_called_once_with([{
+        mock_report_instance.generate_markdown_report.assert_called_once_with('test_report', results=[{
             'web_url': 'https://gitlab.com/test/repo/-/merge_requests/1',
             'iid': 1,
             'target_branch': 'main',
             'source_branch': 'update-package'
-        }], 'test_report')
+        }])
 
     def test_parse_packages_to_update_from_args(self):
         """Test parsing packages from command line arguments."""

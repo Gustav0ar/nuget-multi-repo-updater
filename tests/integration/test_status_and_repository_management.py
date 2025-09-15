@@ -813,7 +813,7 @@ class TestDryRunServiceIntegration:
 
         with patch('sys.exit'), \
              patch('builtins.open', create=True) as mock_open, \
-             patch('src.services.report_generator.ReportGenerator.generate') as mock_generate:
+             patch('src.services.report_generator.ReportGenerator.generate_markdown_report') as mock_generate:
             dry_run_service.simulate_package_updates(
                 repositories, packages_to_update, False, 'dry_run_report.md'
             )

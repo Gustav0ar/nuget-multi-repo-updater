@@ -24,29 +24,32 @@ class ReportGenerator:
             
         self.report_data.append(entry)
 
-    def generate(self, output_file: str):
+    def generate_markdown_report(self, output_file: str, results: List[Dict] = None):
         """Generate the report file."""
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"{output_file}_{timestamp}.md"
+
+        report_data = results if results is not None else self.report_data
 
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(f"# NuGet Package Update Report\n")
             f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             
             # Generate summary
-            self._write_summary(f)
+            self._write_summary(f, report_data)
 
-            for entry in self.report_data:
-                f.write(f"## Repository: {entry['repo_name']}\n")
+            for entry in report_data:
+                repo_name = entry.get('repo_name') or entry.get('name')
+                f.write(f"## Repository: {repo_name}\n")
                 if entry.get('target_branch'):
                     f.write(f"- **Target Branch**: {entry['target_branch']}\n")
-                f.write(f"- **Package**: {entry['package_name']}\n")
+                f.write(f"- **Package**: {entry.get('package_name', 'N/A')}\n")
                 if entry.get('old_version'):
                     f.write(f"  - **Version**: {entry['old_version']} → {entry['new_version']}\n")
                 else:
-                    f.write(f"  - **Version**: {entry['new_version']}\n")
-                f.write(f"  - **Status**: {entry['status']}\n")
-                f.write(f"  - **Details**: {entry['details']}\n")
+                    f.write(f"  - **Version**: {entry.get('new_version', 'N/A')}\n")
+                f.write(f"  - **Status**: {entry.get('status', 'N/A')}\n")
+                f.write(f"  - **Details**: {entry.get('details', 'N/A')}\n")
                 
                 # Add migration information if available
                 if 'migration_info' in entry:
@@ -56,7 +59,7 @@ class ReportGenerator:
         
         return filename
     
-    def _write_summary(self, f):
+    def _write_summary(self, f, report_data):
         """Write summary section of the report."""
         total_repos = len(set(entry['repo_name'] for entry in self.report_data))
         total_packages = len(self.report_data)
