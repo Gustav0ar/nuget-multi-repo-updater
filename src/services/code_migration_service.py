@@ -6,8 +6,9 @@ import json
 import subprocess
 import tempfile
 import os
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -35,6 +36,192 @@ class CodeMigrationService:
     
     def __init__(self, csharp_tool_path: str):
         self.csharp_tool_path = csharp_tool_path
+        self._cached_executable_path: Optional[str] = None
+        
+    def _get_executable_path(self) -> Optional[str]:
+        """Get the path to the executable, building if necessary."""
+        # Return cached path if we already found it
+        if self._cached_executable_path:
+            return self._cached_executable_path
+            
+        tool_dir = Path(self.csharp_tool_path)
+        
+        if not tool_dir.exists():
+            logging.warning(f"CSharpMigrationTool directory not found: {tool_dir}")
+            return None
+            
+        # Check for built executable in any .NET version
+        bin_debug_dir = tool_dir / 'bin' / 'Debug'
+        
+        if bin_debug_dir.exists():
+            # Find all target framework directories (e.g., net6.0, net7.0, net8.0, net9.0, etc.)
+            target_framework_dirs = [d for d in bin_debug_dir.iterdir() 
+                                   if d.is_dir() and d.name.startswith('net')]
+            
+            # Sort by version number (newest first) - properly handle numeric versions
+            def parse_net_version(dirname):
+                try:
+                    # Extract version number from netX.Y format
+                    version_str = dirname.removeprefix('net')
+                    # Split on '.' and convert to tuple of ints for proper comparison
+                    version_parts = tuple(int(x) for x in version_str.split('.'))
+                    return version_parts
+                except (ValueError, AttributeError):
+                    # Fallback to string comparison for non-standard names
+                    return (0, 0)  # Put unrecognized versions at the end
+            
+            target_framework_dirs.sort(key=lambda x: parse_net_version(x.name), reverse=True)
+            
+            for bin_dir in target_framework_dirs:
+                exe_path = bin_dir / 'CSharpMigrationTool'  # Linux executable
+                exe_path_win = bin_dir / 'CSharpMigrationTool.exe'  # Windows executable
+                dll_path = bin_dir / 'CSharpMigrationTool.dll'
+                
+                if exe_path.exists():
+                    self._cached_executable_path = str(exe_path)
+                    logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
+                    return self._cached_executable_path
+                elif exe_path_win.exists():
+                    self._cached_executable_path = str(exe_path_win)
+                    logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
+                    return self._cached_executable_path
+                elif dll_path.exists():
+                    self._cached_executable_path = str(dll_path)
+                    logging.info(f"Found C# migration tool DLL: {self._cached_executable_path}")
+                    return self._cached_executable_path
+        
+        # If no built binary found, try to build the tool
+        return self._build_tool_if_needed(tool_dir)
+        
+    def _build_tool_if_needed(self, tool_dir: Path) -> Optional[str]:
+        """Build the C# migration tool if it's not already built."""
+        try:
+            # Check if dotnet is available
+            result = subprocess.run(['dotnet', '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                logging.warning(".NET SDK not available, cannot build C# migration tool")
+                return None
+            
+            # Check if the tool directory has a .csproj file
+            csproj_files = list(tool_dir.glob('*.csproj'))
+            if not csproj_files:
+                logging.warning(f"No .csproj file found in {tool_dir}, cannot build")
+                return None
+            
+            logging.info(f"Building C# migration tool in {tool_dir}...")
+            
+            # Build the tool
+            build_result = subprocess.run(
+                ['dotnet', 'build', '--configuration', 'Debug'],
+                cwd=str(tool_dir),
+                capture_output=True,
+                text=True,
+                timeout=120  # Allow up to 2 minutes for build
+            )
+            
+            if build_result.returncode != 0:
+                logging.error(f"Failed to build C# migration tool: {build_result.stderr}")
+                return None
+            
+            logging.info("C# migration tool built successfully")
+            
+            # Now check again for the built executable using dynamic discovery
+            bin_debug_dir = tool_dir / 'bin' / 'Debug'
+            
+            if bin_debug_dir.exists():
+                # Find all target framework directories
+                target_framework_dirs = [d for d in bin_debug_dir.iterdir() 
+                                       if d.is_dir() and d.name.startswith('net')]
+                
+                # Sort by version number (newest first) - properly handle numeric versions
+                def parse_net_version(dirname):
+                    try:
+                        # Extract version number from netX.Y format
+                        version_str = dirname.removeprefix('net')
+                        # Split on '.' and convert to tuple of ints for proper comparison
+                        version_parts = tuple(int(x) for x in version_str.split('.'))
+                        return version_parts
+                    except (ValueError, AttributeError):
+                        # Fallback for non-standard names
+                        return (0, 0)  # Put unrecognized versions at the end
+                
+                target_framework_dirs.sort(key=lambda x: parse_net_version(x.name), reverse=True)
+                
+                for bin_dir in target_framework_dirs:
+                    exe_path = bin_dir / 'CSharpMigrationTool'
+                    exe_path_win = bin_dir / 'CSharpMigrationTool.exe'
+                    dll_path = bin_dir / 'CSharpMigrationTool.dll'
+                    
+                    if exe_path.exists():
+                        self._cached_executable_path = str(exe_path)
+                        logging.info(f"Built and found executable: {self._cached_executable_path}")
+                        return self._cached_executable_path
+                    elif exe_path_win.exists():
+                        self._cached_executable_path = str(exe_path_win)
+                        logging.info(f"Built and found executable: {self._cached_executable_path}")
+                        return self._cached_executable_path
+                    elif dll_path.exists():
+                        self._cached_executable_path = str(dll_path)
+                        logging.info(f"Built and found DLL: {self._cached_executable_path}")
+                        return self._cached_executable_path
+            
+            logging.warning("Built C# migration tool, but executable not found in expected location")
+            return None
+            
+        except FileNotFoundError:
+            logging.warning("dotnet command not found, cannot build C# migration tool")
+            return None
+        except subprocess.TimeoutExpired:
+            logging.error("Timeout while building C# migration tool")
+            return None
+        except Exception as e:
+            logging.error(f"Error building C# migration tool: {e}")
+            return None
+            
+    def _prepare_command(self, rules_file_path: str, target_files: List[str], 
+                        working_directory: str = None) -> Tuple[List[str], bool]:
+        """Prepare the command to execute the migration tool.
+        
+        Returns:
+            Tuple of (command_args, use_dotnet_run)
+        """
+        executable_path = self._get_executable_path()
+        
+        if executable_path:
+            # We have a built executable/DLL, use it directly
+            if executable_path.endswith('.dll'):
+                # Use dotnet to run the DLL
+                cmd = ['dotnet', executable_path]
+            else:
+                # Direct executable
+                cmd = [executable_path]
+                
+            # Add the arguments
+            cmd.extend([
+                '--rules-file', rules_file_path,
+                '--target-files', ','.join(target_files)
+            ])
+            
+            if working_directory:
+                cmd.extend(['--working-directory', working_directory])
+                
+            return cmd, False
+        else:
+            # Fall back to dotnet run (which will build if needed)
+            logging.warning("No built executable found, falling back to 'dotnet run'")
+            cmd = [
+                'dotnet', 'run',
+                '--project', self.csharp_tool_path,
+                '--',
+                '--rules-file', rules_file_path,
+                '--target-files', ','.join(target_files)
+            ]
+            
+            if working_directory:
+                cmd.extend(['--working-directory', working_directory])
+                
+            return cmd, True
         
     def execute_migrations(self, target_files: List[str], migration_rules: List[Dict[str, Any]], 
                           working_directory: str = None) -> MigrationResult:
@@ -64,19 +251,13 @@ class CodeMigrationService:
                 rules_file_path = rules_file.name
                 
             try:
-                # Prepare command arguments
-                cmd = [
-                    'dotnet', 'run',
-                    '--project', self.csharp_tool_path,
-                    '--',
-                    '--rules-file', rules_file_path,
-                    '--target-files', ','.join(target_files)
-                ]
-                
-                if working_directory:
-                    cmd.extend(['--working-directory', working_directory])
+                # Prepare command arguments using optimized approach
+                cmd, use_dotnet_run = self._prepare_command(rules_file_path, target_files, working_directory)
                     
-                logging.info(f"Executing C# migration tool: {' '.join(cmd)}")
+                if use_dotnet_run:
+                    logging.info(f"Using 'dotnet run' (building if needed): {' '.join(cmd)}")
+                else:
+                    logging.info(f"Using pre-built executable: {' '.join(cmd)}")
                 
                 # Execute the C# migration tool
                 result = subprocess.run(
@@ -148,33 +329,18 @@ class CodeMigrationService:
     def validate_tool_availability(self) -> bool:
         """Check if the C# migration tool is available and functional."""
         try:
-            # Check if dotnet is available
-            result = subprocess.run(['dotnet', '--version'], capture_output=True, text=True)
-            if result.returncode != 0:
-                logging.error("dotnet CLI not available")
-                return False
-                
-            # Check if the migration tool project exists
-            if not os.path.exists(self.csharp_tool_path):
-                logging.error(f"C# migration tool not found at: {self.csharp_tool_path}")
-                return False
-                
-            # Try to build the tool
-            build_result = subprocess.run(
-                ['dotnet', 'build', self.csharp_tool_path],
-                capture_output=True,
-                text=True
-            )
+            # First try to get an executable path (will build if needed)
+            executable_path = self._get_executable_path()
             
-            if build_result.returncode != 0:
-                logging.error(f"Failed to build C# migration tool: {build_result.stderr}")
+            if executable_path:
+                logging.info(f"C# migration tool is available at: {executable_path}")
+                return True
+            else:
+                logging.error("C# migration tool is not available and could not be built")
                 return False
                 
-            logging.info("C# migration tool is available and ready")
-            return True
-            
         except Exception as e:
-            logging.error(f"Failed to validate C# migration tool: {e}")
+            logging.error(f"Error validating C# migration tool availability: {e}")
             return False
             
     def generate_migration_report(self, results: MigrationResult) -> str:
