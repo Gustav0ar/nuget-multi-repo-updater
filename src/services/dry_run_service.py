@@ -23,7 +23,7 @@ class DryRunService:
         self.migration_service = DryRunCodeMigrationService("./CSharpMigrationTool")
 
     def simulate_package_updates(self, repositories: List[Dict], packages_to_update: List[Dict],
-                                allow_downgrade: bool = False, report_file: str = None) -> None:
+                                allow_downgrade: bool = False, report_file: str = None, use_local_clone: bool = False) -> None:
         """Simulate the entire package update process without making changes."""
         print(f"\n{'='*80}")
         print("DRY RUN MODE - SIMULATION REPORT")
@@ -48,7 +48,7 @@ class DryRunService:
 
         for repo in repositories:
             self._simulate_repository_processing(
-                repo, packages_to_update, allow_downgrade, dry_run_report, dry_run_summary
+                repo, packages_to_update, allow_downgrade, dry_run_report, dry_run_summary, use_local_clone
             )
 
         self._print_dry_run_summary(dry_run_summary, dry_run_report, report_file)
@@ -58,7 +58,7 @@ class DryRunService:
 
     def _simulate_repository_processing(self, repo: Dict, packages_to_update: List[Dict],
                                       allow_downgrade: bool, dry_run_report: ReportGenerator,
-                                      dry_run_summary: Dict[str, int]) -> None:
+                                      dry_run_summary: Dict[str, int], use_local_clone: bool = False) -> None:
         """Simulate processing a single repository."""
         # Handle both repository objects and IDs
         if isinstance(repo, dict):
@@ -71,14 +71,14 @@ class DryRunService:
             dry_run_summary['errors'] += 1
             return
 
-        print(f"\n{'─'*60}")
+        print(f"\n{'-'*60}")
         print(f"🔍 Analyzing: {project['name']} ({project['path_with_namespace']})")
         print(f"   Default Branch: {project['default_branch']}")
         print(f"   Repository URL: {project['http_url_to_repo']}")
 
         # Process all packages together in single transaction (matches actual execution)
         self._simulate_multi_package_transaction(
-            project, packages_to_update, allow_downgrade, dry_run_report, dry_run_summary
+            project, packages_to_update, allow_downgrade, dry_run_report, dry_run_summary, use_local_clone
         )
 
     def _simulate_package_processing(self, project: Dict, package_info: Dict,
@@ -366,7 +366,7 @@ class DryRunService:
 
     def _simulate_multi_package_transaction(self, project: Dict, packages_to_update: List[Dict],
                                           allow_downgrade: bool, dry_run_report: ReportGenerator,
-                                          dry_run_summary: Dict[str, int]) -> None:
+                                          dry_run_summary: Dict[str, int], use_local_clone: bool = False) -> None:
         """Simulate processing multiple packages as single transaction (matches actual execution)."""
         # Generate single branch and MR title for all packages (same as MultiPackageUpdateAction)
         if len(packages_to_update) == 1:
@@ -397,7 +397,10 @@ class DryRunService:
             print(f"   ⚠️  Error checking existing MR: {e}")
 
         # Simulate single transaction workflow
-        print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
+        if use_local_clone:
+            print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
+        else:
+            print(f"   🔄 Would use GitLab API to access repository content")
         print(f"   🌿 Would create branch: {branch_name}")
         print(f"   📄 Would scan for .csproj files...")
         

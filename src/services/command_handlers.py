@@ -77,8 +77,12 @@ class UpdateNugetCommandHandler:
             if not dry_run_report_file and self.config_service:
                 dry_run_report_file = self.config_service.get('report_file')
 
+            use_local_clone = getattr(args, 'use_local_clone', None)
+            if use_local_clone is None and self.config_service:
+                use_local_clone = self.config_service.get('use_local_clone', False)
+
             dry_run_service.simulate_package_updates(
-                repositories, packages_to_update, args.allow_downgrade, dry_run_report_file
+                repositories, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
             )
             return
 

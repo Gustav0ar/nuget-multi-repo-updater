@@ -292,7 +292,8 @@ class TestUpdateNugetCommandHandler:
             dry_run=True,
             allow_downgrade=False,
             report_file='test_report',
-            max_repositories=None
+            max_repositories=None,
+            use_local_clone=False
         )
 
         mock_repo_manager_instance = mock_repo_manager.return_value
@@ -304,7 +305,74 @@ class TestUpdateNugetCommandHandler:
 
         # Verify dry run service was called
         mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
-            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report'
+            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report', False
+        )
+
+    @patch('src.services.repository_manager.RepositoryManager')
+    @patch('src.services.dry_run_service.DryRunService')
+    @patch('src.services.user_interaction_service.UserInteractionService')
+    def test_execute_dry_run_mode_with_local_clone(self, mock_user_interaction, mock_dry_run, mock_repo_manager):
+        """Test dry run execution with use_local_clone enabled."""
+        args = Namespace(
+            packages=['Package1@1.0.0'],
+            repositories=['123'],
+            repo_file=None,
+            discover_group=None,
+            dry_run=True,
+            allow_downgrade=False,
+            report_file='test_report',
+            max_repositories=None,
+            use_local_clone=True
+        )
+
+        mock_repo_manager_instance = mock_repo_manager.return_value
+        mock_repo_manager_instance.get_repositories_from_command_line.return_value = self.sample_repositories
+
+        mock_dry_run_instance = mock_dry_run.return_value
+
+        self.handler.execute(args)
+
+        # Verify dry run service was called with use_local_clone=True
+        mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
+            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report', True
+        )
+
+    @patch('src.services.repository_manager.RepositoryManager')
+    @patch('src.services.dry_run_service.DryRunService')
+    @patch('src.services.user_interaction_service.UserInteractionService')
+    def test_execute_dry_run_mode_with_local_clone_from_config(self, mock_user_interaction, mock_dry_run, mock_repo_manager):
+        """Test dry run execution with use_local_clone from config."""
+        args = Namespace(
+            packages=['Package1@1.0.0'],
+            repositories=['123'],
+            repo_file=None,
+            discover_group=None,
+            dry_run=True,
+            allow_downgrade=False,
+            report_file=None, # Not in args
+            max_repositories=None,
+            use_local_clone=None  # Not provided via args
+        )
+
+        mock_repo_manager_instance = mock_repo_manager.return_value
+        mock_repo_manager_instance.get_repositories_from_command_line.return_value = self.sample_repositories
+
+        mock_dry_run_instance = mock_dry_run.return_value
+        
+        def mock_config_get(key, default=None):
+            if key == 'use_local_clone':
+                return True
+            if key == 'report_file':
+                return 'test_report_from_config'
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_config_get
+
+        self.handler.execute(args)
+
+        # Verify dry run service was called with use_local_clone=True and report file from config
+        mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
+            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report_from_config', True
         )
 
     @patch('src.services.repository_manager.RepositoryManager')
