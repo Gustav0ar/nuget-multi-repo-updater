@@ -231,13 +231,24 @@ class TestUpdateNugetCommandHandler:
         )
 
         mock_repo_manager = Mock()
-        self.mock_config_service.get.return_value = ['123', '456']
+        # Mock config service to return {} for 'discover' and ['123', '456'] for 'repositories'
+        def mock_get(key, default=None):
+            if key == 'discover':
+                return {}
+            elif key == 'repositories':
+                return ['123', '456']
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_get
         mock_repo_manager.get_repositories_from_config.return_value = self.sample_repositories
 
         result = self.handler._get_repositories(args, mock_repo_manager, None)
 
         assert result == self.sample_repositories
-        self.mock_config_service.get.assert_called_once_with('repositories', [])
+        # Verify both calls were made
+        assert self.mock_config_service.get.call_count == 2
+        self.mock_config_service.get.assert_any_call('discover', {})
+        self.mock_config_service.get.assert_any_call('repositories', [])
         mock_repo_manager.get_repositories_from_config.assert_called_once_with(['123', '456'])
 
     def test_get_repositories_no_repositories(self):
@@ -249,8 +260,15 @@ class TestUpdateNugetCommandHandler:
         )
 
         mock_repo_manager = Mock()
-        # Mock config service to return empty list
-        self.mock_config_service.get.return_value = []
+        # Mock config service to return {} for 'discover' and [] for 'repositories'
+        def mock_get(key, default=None):
+            if key == 'discover':
+                return {}
+            elif key == 'repositories':
+                return []
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_get
         # Mock repository manager to return empty list when called with empty config
         mock_repo_manager.get_repositories_from_config.return_value = []
 
@@ -258,7 +276,7 @@ class TestUpdateNugetCommandHandler:
         with patch('src.services.command_handlers.logging.error') as mock_logging:
             with patch('src.services.command_handlers.sys.exit') as mock_exit:
                 self.handler._get_repositories(args, mock_repo_manager, None)
-                mock_logging.assert_called_with("No repositories specified. Use --repositories, --repo-file, --discover-group, or specify repositories in config file.")
+                mock_logging.assert_called_with("No repositories specified. Use --repositories, --repo-file, --discover-group, or specify repositories/discover config in config file.")
                 mock_exit.assert_called_once_with(1)
 
     @patch('src.services.repository_manager.RepositoryManager')
@@ -339,7 +357,15 @@ class TestUpdateNugetCommandHandler:
         )
 
         mock_repo_manager_instance = mock_repo_manager.return_value
-        self.mock_config_service.get.return_value = []
+        # Mock config service to return {} for 'discover' and [] for 'repositories'
+        def mock_get(key, default=None):
+            if key == 'discover':
+                return {}
+            elif key == 'repositories':
+                return []
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_get
         # Add the missing mock for get_repositories_from_config
         mock_repo_manager_instance.get_repositories_from_config.return_value = []
 

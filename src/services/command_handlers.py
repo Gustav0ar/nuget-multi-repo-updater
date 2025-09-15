@@ -243,15 +243,37 @@ class UpdateNugetCommandHandler:
         elif args.repo_file:
             repositories = repository_manager.get_repositories_from_file(args.repo_file)
         elif args.discover_group:
+            # Use command line arguments, falling back to config file values
+            discover_config = self.config_service.get('discover', {}) if self.config_service else {}
+            
+            group = args.discover_group
+            owned_only = getattr(args, 'owned_only', discover_config.get('owned_only', False))
+            member_only = getattr(args, 'member_only', discover_config.get('member_only', False))
+            include_archived = getattr(args, 'include_archived', discover_config.get('include_archived', False))
+            exclude_forks = getattr(args, 'exclude_forks', discover_config.get('exclude_forks', False))
+            ignore_patterns = getattr(args, 'ignore_patterns', None)
+            
+            # Handle ignore_patterns: could be None, empty list, or a string
+            if ignore_patterns and isinstance(ignore_patterns, list) and len(ignore_patterns) == 0:
+                ignore_patterns = None
+            
+            # If ignore_patterns not provided via args, get from config
+            if not ignore_patterns and discover_config.get('ignore_patterns'):
+                ignore_patterns_list = discover_config.get('ignore_patterns', [])
+                if isinstance(ignore_patterns_list, list):
+                    ignore_patterns = ','.join(ignore_patterns_list)
+                elif isinstance(ignore_patterns_list, str):
+                    ignore_patterns = ignore_patterns_list
+            
             repositories = repository_manager.discover_repositories(
-                args.discover_group, args.owned_only, args.member_only, args.include_archived
+                group, owned_only, member_only, include_archived
             )
 
-            if args.ignore_patterns:
-                ignored_patterns = args.ignore_patterns.split(',')
+            if ignore_patterns:
+                ignored_patterns = ignore_patterns.split(',')
                 repositories = repository_manager.filter_repositories_by_ignore_patterns(repositories, ignored_patterns)
 
-            if args.exclude_forks:
+            if exclude_forks:
                 repositories = repository_manager.filter_out_forks(repositories)
 
             if repositories:
@@ -260,11 +282,41 @@ class UpdateNugetCommandHandler:
                 logging.info("No repositories found matching the discovery criteria")
                 return []
         else:
+            # Check if discover mode should be used from config file
             if self.config_service:
+                discover_config = self.config_service.get('discover', {})
+                # Ensure discover_config is a dict (safety check for tests)
+                if isinstance(discover_config, dict) and discover_config.get('group'):
+                    # Use discovery mode with config file values
+                    group = discover_config.get('group')
+                    owned_only = discover_config.get('owned_only', False)
+                    member_only = discover_config.get('member_only', False)
+                    include_archived = discover_config.get('include_archived', False)
+                    exclude_forks = discover_config.get('exclude_forks', False)
+                    ignore_patterns_list = discover_config.get('ignore_patterns', [])
+                    
+                    repositories = repository_manager.discover_repositories(
+                        group, owned_only, member_only, include_archived
+                    )
+
+                    if ignore_patterns_list:
+                        repositories = repository_manager.filter_repositories_by_ignore_patterns(repositories, ignore_patterns_list)
+
+                    if exclude_forks:
+                        repositories = repository_manager.filter_out_forks(repositories)
+
+                    if repositories:
+                        user_interaction.display_discovered_repositories(repositories)
+                        return repositories
+                    else:
+                        logging.info("No repositories found matching the discovery criteria from config")
+                
+                # Fall back to repositories list from config
                 repo_configs = self.config_service.get('repositories', [])
                 repositories = repository_manager.get_repositories_from_config(repo_configs)
+                
             if not repositories:
-                logging.error("No repositories specified. Use --repositories, --repo-file, --discover-group, or specify repositories in config file.")
+                logging.error("No repositories specified. Use --repositories, --repo-file, --discover-group, or specify repositories/discover config in config file.")
                 sys.exit(1)
 
         return repositories
