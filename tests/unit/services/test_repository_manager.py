@@ -293,6 +293,14 @@ group/repo3
 
         assert result == sample_repositories
 
+    def test_filter_out_forks(self, repository_manager, sample_repositories):
+        """Test filtering out forked repositories."""
+        result = repository_manager.filter_out_forks(sample_repositories)
+
+        # Should exclude the fork-project
+        assert len(result) == 4
+        assert all(repo.get('forked_from_project') is None for repo in result)
+
     def test_repository_data_integrity(self, repository_manager, sample_repositories):
         """Test that filtering doesn't modify original repository data."""
         original_data = [repo.copy() for repo in sample_repositories]

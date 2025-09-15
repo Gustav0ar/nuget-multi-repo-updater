@@ -71,6 +71,13 @@ class RepositoryManager:
 
         return filtered_projects
 
+    def filter_out_forks(self, projects: List[Dict]) -> List[Dict]:
+        """Filter out forked repositories."""
+        filtered_projects = [p for p in projects if not p.get('forked_from_project')]
+        if len(projects) > len(filtered_projects):
+            logging.info(f"Excluded {len(projects) - len(filtered_projects)} forks, {len(filtered_projects)} repositories remaining")
+        return filtered_projects
+
     def get_repositories_from_command_line(self, repo_list_str: str) -> List[Dict]:
         """Get repositories from command line comma-separated list."""
         repositories = []
