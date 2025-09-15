@@ -271,7 +271,7 @@ class UpdateNugetCommandHandler:
 
             if ignore_patterns:
                 ignored_patterns = ignore_patterns.split(',')
-                repositories = repository_manager.filter_repositories_by_ignore_patterns(repositories, ignored_patterns)
+                repositories = repository_manager.filter_repositories_by_patterns(repositories, ignored_patterns)
 
             if exclude_forks:
                 repositories = repository_manager.filter_out_forks(repositories)
@@ -300,7 +300,7 @@ class UpdateNugetCommandHandler:
                     )
 
                     if ignore_patterns_list:
-                        repositories = repository_manager.filter_repositories_by_ignore_patterns(repositories, ignore_patterns_list)
+                        repositories = repository_manager.filter_repositories_by_patterns(repositories, ignore_patterns_list)
 
                     if exclude_forks:
                         repositories = repository_manager.filter_out_forks(repositories)
