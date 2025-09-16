@@ -46,8 +46,8 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     update_parser.add_argument('--strict-migration-mode', action='store_true', help='Rollback everything if migrations fail')
     
     # Branch selection arguments
-    update_parser.add_argument('--use-most-recent-branch', action='store_true', help='Use the most recent branch instead of default branch')
-    update_parser.add_argument('--branch-filter', help='Wildcard pattern to filter branches (e.g., "*main", "main*", "*main*")')
+    update_parser.add_argument('--use-most-recent-branch', action='store_true', default=None, help='Use the most recent branch instead of default branch')
+    update_parser.add_argument('--branch-filter', default=None, help='Wildcard pattern to filter branches (e.g., "*main", "main*", "*main*")')
 
     # Sub-parser for the check-status action
     status_parser = subparsers.add_parser('check-status', help='Check the status of merge requests')
