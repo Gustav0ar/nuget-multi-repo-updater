@@ -126,12 +126,12 @@ class LocalCloneStrategy(RepositoryStrategy):
         """Create a merge request using the SCM provider."""
         return self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
 
-    def cleanup_branch(self, repo_id: str, branch_name: str) -> bool:
+    def cleanup_branch(self, repo_id: str, branch_name: str, default_branch: str) -> bool:
         """Clean up branch - for local strategy, delete local and remote branch."""
         try:
             # Switch to a different branch first
             if self.git_service.get_current_branch() == branch_name:
-                self.git_service.checkout_branch('main')
+                self.git_service.checkout_branch(default_branch)
             
             # Delete local branch
             self.git_service.delete_branch(branch_name)
@@ -177,7 +177,7 @@ class LocalCloneStrategy(RepositoryStrategy):
             logging.error(f"Failed to commit and push changes: {e}")
             return False
 
-    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str]):
+    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str], branch_name: str):
         """Execute C# migration tool on local files."""
         from src.services.code_migration_service import CodeMigrationService
         import json

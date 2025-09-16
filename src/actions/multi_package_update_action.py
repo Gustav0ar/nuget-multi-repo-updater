@@ -188,7 +188,7 @@ class MultiPackageUpdateAction(Action):
         try:
             # Execute migration tool
             migration_result = self.strategy.execute_csharp_migration_tool(
-                repo_id, rules_file_path, csharp_files
+                repo_id, rules_file_path, csharp_files, branch_name
             )
 
             if migration_result and migration_result.success and migration_result.modified_files:

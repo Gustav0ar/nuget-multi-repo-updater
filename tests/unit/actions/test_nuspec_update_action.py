@@ -139,7 +139,7 @@ class TestNuspecUpdateAction:
         action.strategy.get_file_content.assert_called_once_with('123', '/tmp/test-repo/project.csproj', 'main')
         
         # Should clean up branch since no changes were made
-        action.strategy.cleanup_branch.assert_called_once_with('123', 'update-testpackage-to-2_0_0')
+        action.strategy.cleanup_branch.assert_called_once_with('123', 'update-testpackage-to-2_0_0', 'main')
         action.strategy.cleanup_repository.assert_called_once_with('123')
 
         # Should return None

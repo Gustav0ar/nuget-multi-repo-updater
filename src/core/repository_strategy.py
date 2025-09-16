@@ -46,7 +46,7 @@ class RepositoryStrategy(ABC):
         pass
 
     @abstractmethod
-    def cleanup_branch(self, repo_id: str, branch_name: str) -> bool:
+    def cleanup_branch(self, repo_id: str, branch_name: str, default_branch: str) -> bool:
         """Clean up (delete) a branch if no changes were made."""
         pass
 
@@ -61,7 +61,7 @@ class RepositoryStrategy(ABC):
         pass
 
     @abstractmethod
-    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str]):
+    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str], branch_name: str):
         """Execute C# migration tool on target files."""
         pass
 

@@ -92,7 +92,7 @@ class ApiStrategy(RepositoryStrategy):
         """Create a merge request using API."""
         return self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
 
-    def cleanup_branch(self, repo_id: str, branch_name: str) -> bool:
+    def cleanup_branch(self, repo_id: str, branch_name: str, default_branch: str) -> bool:
         """Clean up branch using API."""
         return self.scm_provider.delete_branch(repo_id, branch_name)
 
@@ -110,7 +110,7 @@ class ApiStrategy(RepositoryStrategy):
         logging.info(f"API strategy: Files already committed individually for branch {branch_name}")
         return True
 
-    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str]):
+    def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str], branch_name: str):
         """Execute C# migration tool for API strategy by downloading files, processing, and uploading."""
         from src.services.code_migration_service import CodeMigrationService
         import json
@@ -121,7 +121,7 @@ class ApiStrategy(RepositoryStrategy):
                 # Download all target files
                 local_files = []
                 for file_path in target_files:
-                    content = self.scm_provider.get_file_content(repo_id, file_path, ref='main')
+                    content = self.scm_provider.get_file_content(repo_id, file_path, ref=branch_name)
                     if content:
                         local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
                         with open(local_file_path, 'w', encoding='utf-8') as f:

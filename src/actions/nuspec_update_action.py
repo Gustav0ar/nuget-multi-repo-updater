@@ -97,12 +97,11 @@ class NuspecUpdateAction(Action):
 
         return modified_files
 
-    def _handle_processing_results(self, repo_id: str, modified_files: List[str],
-                                 branch_name: str, default_branch: str) -> Optional[Dict]:
+    def _handle_processing_results(self, repo_id: str, modified_files: List[str], branch_name: str, default_branch: str) -> Optional[Dict]:
         """Handle the results of file processing and create merge request if needed."""
         if not modified_files:
             # Clean up branch if no changes were made
-            self.strategy.cleanup_branch(repo_id, branch_name)
+            self.strategy.cleanup_branch(repo_id, branch_name, default_branch)
             logging.info(f"No changes needed for {self.package_name} in repository {repo_id}")
             return None
 
