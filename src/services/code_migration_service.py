@@ -199,9 +199,12 @@ class CodeMigrationService:
                 
             # Add the arguments
             cmd.extend([
-                '--rules-file', rules_file_path,
-                '--target-files', ','.join(target_files)
+                '--rules-file', rules_file_path
             ])
+            
+            # Add each target file as a separate argument to avoid command line length limits
+            for target_file in target_files:
+                cmd.extend(['--target-file', target_file])
             
             if working_directory:
                 cmd.extend(['--working-directory', working_directory])
@@ -214,9 +217,12 @@ class CodeMigrationService:
                 'dotnet', 'run',
                 '--project', self.csharp_tool_path,
                 '--',
-                '--rules-file', rules_file_path,
-                '--target-files', ','.join(target_files)
+                '--rules-file', rules_file_path
             ]
+            
+            # Add each target file as a separate argument
+            for target_file in target_files:
+                cmd.extend(['--target-file', target_file])
             
             if working_directory:
                 cmd.extend(['--working-directory', working_directory])

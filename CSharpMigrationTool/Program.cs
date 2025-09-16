@@ -16,11 +16,12 @@ class Program
             IsRequired = true
         };
 
-        var targetFilesOption = new Option<string>(
-            name: "--target-files",
-            description: "Comma-separated list of C# files to process")
+        var targetFilesOption = new Option<List<FileInfo>>(
+            name: "--target-file",
+            description: "C# file to process (can be specified multiple times)")
         {
-            IsRequired = true
+            IsRequired = true,
+            AllowMultipleArgumentsPerToken = true
         };
 
         var workingDirectoryOption = new Option<DirectoryInfo>(
@@ -31,7 +32,7 @@ class Program
         rootCommand.AddOption(targetFilesOption);
         rootCommand.AddOption(workingDirectoryOption);
 
-        rootCommand.SetHandler(async (FileInfo rulesFile, string targetFiles, DirectoryInfo? workingDir) =>
+        rootCommand.SetHandler(async (FileInfo rulesFile, List<FileInfo> targetFiles, DirectoryInfo? workingDir) =>
         {
             try
             {
@@ -52,11 +53,11 @@ class Program
                     return;
                 }
 
-                // Parse target files
-                var files = targetFiles.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                     .Select(f => f.Trim())
-                                     .Where(f => File.Exists(f))
-                                     .ToList();
+                // Convert FileInfo list to string paths and filter existing files
+                var files = targetFiles
+                             .Where(f => f.Exists)
+                             .Select(f => f.FullName)
+                             .ToList();
 
                 if (!files.Any())
                 {
