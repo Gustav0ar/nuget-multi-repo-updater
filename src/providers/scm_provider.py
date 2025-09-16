@@ -45,3 +45,13 @@ class ScmProvider(ABC):
     def create_branch(self, project_id: str, branch_name: str, ref: str = "main") -> bool:
         """Create a new branch in the repository."""
         pass
+
+    @abstractmethod
+    def delete_branch(self, project_id: str, branch_name: str) -> bool:
+        """Delete a branch from the repository."""
+        pass
+
+    @abstractmethod
+    def branch_exists(self, project_id: str, branch_name: str) -> bool:
+        """Check if a branch exists in the repository."""
+        pass

@@ -129,16 +129,26 @@ class LocalCloneStrategy(RepositoryStrategy):
     def cleanup_branch(self, repo_id: str, branch_name: str, default_branch: str) -> bool:
         """Clean up branch - for local strategy, delete local and remote branch."""
         try:
-            # Switch to a different branch first
-            if self.git_service.get_current_branch() == branch_name:
+            # Check if we're currently on the branch we want to delete
+            current_branch = self.git_service.get_current_branch()
+            if current_branch == branch_name:
+                # Switch to default branch before deleting
+                logging.info(f"Switching from {branch_name} to {default_branch} before cleanup")
                 self.git_service.checkout_branch(default_branch)
             
-            # Delete local branch
-            self.git_service.delete_branch(branch_name)
+            # Delete local branch if it exists
+            if self.git_service.branch_exists(branch_name):
+                logging.info(f"Deleting local branch {branch_name}")
+                self.git_service.delete_branch(branch_name)
+            else:
+                logging.debug(f"Local branch {branch_name} does not exist")
             
             # Delete remote branch if it exists
             if self.scm_provider.branch_exists(repo_id, branch_name):
+                logging.info(f"Deleting remote branch {branch_name}")
                 self.scm_provider.delete_branch(repo_id, branch_name)
+            else:
+                logging.debug(f"Remote branch {branch_name} does not exist")
                 
             return True
         except Exception as e:
