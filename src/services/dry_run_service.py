@@ -71,9 +71,14 @@ class DryRunService:
             dry_run_summary['errors'] += 1
             return
 
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+
         print(f"\n{'-'*60}")
         print(f"🔍 Analyzing: {project['name']} ({project['path_with_namespace']})")
         print(f"   Default Branch: {project['default_branch']}")
+        if target_branch != project['default_branch']:
+            print(f"   Target Branch: {target_branch} (using most recent branch)")
         print(f"   Repository URL: {project['http_url_to_repo']}")
 
         # Process all packages together in single transaction (matches actual execution)
@@ -88,13 +93,16 @@ class DryRunService:
         package_name = package_info['name']
         new_version = package_info['version']
 
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+
         print(f"\n   📦 Package: {package_name} → {new_version}")
 
         # Check for existing merge request
         mr_title = f"Update {package_name} to version {new_version}"
         try:
             existing_mr = self.scm_provider.check_existing_merge_request(
-                project['id'], mr_title, target_branch=project['default_branch']
+                project['id'], mr_title, target_branch=target_branch
             )
 
             if existing_mr:
@@ -126,9 +134,12 @@ class DryRunService:
         print(f"   📄 Would scan for .csproj files...")
         migration_info = None
 
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+
         # Try to get repository tree to find .csproj files
         try:
-            tree = self.scm_provider.get_repository_tree(project['id'], ref=project['default_branch'])
+            tree = self.scm_provider.get_repository_tree(project['id'], ref=target_branch)
             if tree:
                 csproj_files = [item['path'] for item in tree
                               if item['type'] == 'blob' and item['path'].endswith('.csproj')]
@@ -164,7 +175,7 @@ class DryRunService:
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
                             'Would Create MR', details, migration_info, old_version=old_version_str,
-                            target_branch=project['default_branch']
+                            target_branch=target_branch
                         )
                     else:
                         print(f"   ➖ No changes needed")
@@ -172,7 +183,7 @@ class DryRunService:
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
                             'No Changes', 'Package not found or already at correct version',
-                            target_branch=project['default_branch']
+                            target_branch=target_branch
                         )
                 else:
                     print(f"   ❌ No .csproj files found")
@@ -180,7 +191,7 @@ class DryRunService:
                     dry_run_report.add_entry(
                         project['name'], package_name, new_version,
                         'No Changes', 'No .csproj files found in repository',
-                        target_branch=project['default_branch']
+                        target_branch=target_branch
                     )
         except Exception as e:
             print(f"   ❌ Error analyzing repository: {e}")
@@ -188,7 +199,7 @@ class DryRunService:
             dry_run_report.add_entry(
                 project['name'], package_name, new_version,
                 'Error', f"Failed to analyze repository: {str(e)}",
-                target_branch=project['default_branch']
+                target_branch=target_branch
             )
 
         return migration_info
@@ -293,13 +304,16 @@ class DryRunService:
         """Analyze .csproj files and return a list of old versions that would be modified."""
         versions_found = []
 
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+
         for csproj_path in csproj_files:
             print(f"      • {csproj_path}")
 
             # Try to get file content and check if package exists
             try:
                 content = self.scm_provider.get_file_content(
-                    project['id'], csproj_path, project['default_branch']
+                    project['id'], csproj_path, target_branch
                 )
                 if content:
                     # Simulate package version check
@@ -335,12 +349,15 @@ class DryRunService:
     def _print_would_create_mr(self, project: Dict, package_name: str, new_version: str,
                              files_would_modify: int) -> None:
         """Print what would happen when creating a merge request."""
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+        
         print(f"   ✅ Would modify {files_would_modify} files")
         print(f"   📝 Would commit changes with message: 'Update {package_name} to version {new_version}'")
         print(f"   🚀 Would push branch to origin")
         print(f"   🔀 Would create merge request:")
         print(f"      Title: Update {package_name} to version {new_version}")
-        print(f"      Target: {project['default_branch']}")
+        print(f"      Target: {target_branch}")
         print(f"      Source: update-{package_name.lower().replace('.', '-')}-to-{new_version.replace('.', '_')}")
 
     def _print_dry_run_summary(self, dry_run_summary: Dict[str, int],
@@ -389,10 +406,13 @@ class DryRunService:
         
         print(f"\n   📦 Packages: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
 
+        # Use target_branch if available, otherwise fall back to default_branch
+        target_branch = project.get('target_branch', project['default_branch'])
+
         # Check for existing MR for the combined update
         try:
             existing_mr = self.scm_provider.check_existing_merge_request(
-                project['id'], mr_title, target_branch=project['default_branch']
+                project['id'], mr_title, target_branch=target_branch
             )
             if existing_mr:
                 print(f"   ✅ Existing MR found: {existing_mr['web_url']}")
@@ -412,7 +432,7 @@ class DryRunService:
         
         # Simulate finding files and analyzing packages together
         try:
-            tree = self.scm_provider.get_repository_tree(project['id'], ref=project['default_branch'])
+            tree = self.scm_provider.get_repository_tree(project['id'], ref=target_branch)
             if tree:
                 csproj_files = [item['path'] for item in tree if item['type'] == 'blob' and item['path'].endswith('.csproj')]
                 cs_files = [item['path'] for item in tree if item['type'] == 'blob' and item['path'].endswith('.cs')]
@@ -463,7 +483,7 @@ class DryRunService:
                         print(f"   🚀 Would push branch to origin")
                         print(f"   🔀 Would create merge request:")
                         print(f"      Title: {mr_title}")
-                        print(f"      Target: {project['default_branch']}")
+                        print(f"      Target: {target_branch}")
                         print(f"      Source: {branch_name}")
 
                         # Update summary
@@ -482,7 +502,7 @@ class DryRunService:
                                 'Would Create MR', f"Single transaction with {len(packages_to_update)} packages",
                                 package_migration_info,
                                 old_version=old_version_str,
-                                target_branch=project['default_branch']
+                                target_branch=target_branch
                             )
                     else:
                         print(f"   ➖ No changes needed")

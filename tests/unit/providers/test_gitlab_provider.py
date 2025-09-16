@@ -646,3 +646,178 @@ class TestGitLabProvider:
             # Verify the file path is URL encoded in the API call
             call_args = mock_get.call_args[0][0]
             assert "path%2Fwith%20spaces%2Ffile.txt" in call_args
+
+    @patch('requests.Session.get')
+    def test_list_branches_success(self, mock_get, gitlab_provider):
+        """Test successful branch listing."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "name": "main",
+                "commit": {
+                    "id": "abc123",
+                    "committed_date": "2024-03-15T10:30:00.000Z"
+                }
+            },
+            {
+                "name": "develop",
+                "commit": {
+                    "id": "def456",
+                    "committed_date": "2024-03-14T09:15:00.000Z"
+                }
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.list_branches("group/project")
+
+        assert len(result) == 2
+        assert result[0]["name"] == "main"
+        assert result[1]["name"] == "develop"
+        mock_get.assert_called_once()
+
+    @patch('requests.Session.get')
+    def test_list_branches_pagination(self, mock_get, gitlab_provider):
+        """Test branch listing with pagination."""
+        # First page - full 100 items
+        page1_response = Mock()
+        page1_response.json.return_value = [{"name": f"branch{i}"} for i in range(100)]
+
+        # Second page - partial items (indicates last page)
+        page2_response = Mock()
+        page2_response.json.return_value = [{"name": f"branch{i}"} for i in range(100, 120)]
+
+        mock_get.side_effect = [page1_response, page2_response]
+
+        result = gitlab_provider.list_branches("group/project")
+
+        assert len(result) == 120
+        assert mock_get.call_count == 2
+
+    @patch('requests.Session.get')
+    def test_list_branches_error_handling(self, mock_get, gitlab_provider):
+        """Test branch listing error handling."""
+        mock_get.side_effect = requests.RequestException("Network error")
+
+        result = gitlab_provider.list_branches("group/project")
+
+        assert result == []
+
+    @patch('requests.Session.get')
+    def test_get_most_recent_branch_success(self, mock_get, gitlab_provider):
+        """Test getting most recent branch successfully."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "name": "main",
+                "commit": {
+                    "committed_date": "2024-03-15T10:30:00.000Z"
+                }
+            },
+            {
+                "name": "develop",
+                "commit": {
+                    "committed_date": "2024-03-16T11:45:00.000Z"  # More recent
+                }
+            },
+            {
+                "name": "feature-branch",
+                "commit": {
+                    "committed_date": "2024-03-14T09:15:00.000Z"
+                }
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.get_most_recent_branch("group/project")
+
+        assert result == "develop"
+
+    @patch('requests.Session.get')
+    def test_get_most_recent_branch_with_filter(self, mock_get, gitlab_provider):
+        """Test getting most recent branch with filter."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "name": "main",
+                "commit": {
+                    "committed_date": "2024-03-15T10:30:00.000Z"
+                }
+            },
+            {
+                "name": "hotfix-main",
+                "commit": {
+                    "committed_date": "2024-03-16T11:45:00.000Z"  # More recent, matches filter
+                }
+            },
+            {
+                "name": "develop",
+                "commit": {
+                    "committed_date": "2024-03-17T12:00:00.000Z"  # Most recent, but doesn't match filter
+                }
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.get_most_recent_branch("group/project", "*main*")
+
+        assert result == "hotfix-main"
+
+    @patch('requests.Session.get')
+    def test_get_most_recent_branch_no_matches(self, mock_get, gitlab_provider):
+        """Test getting most recent branch when no branches match filter."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "name": "develop",
+                "commit": {
+                    "committed_date": "2024-03-15T10:30:00.000Z"
+                }
+            },
+            {
+                "name": "feature-branch",
+                "commit": {
+                    "committed_date": "2024-03-16T11:45:00.000Z"
+                }
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.get_most_recent_branch("group/project", "*main*")
+
+        assert result is None
+
+    @patch('requests.Session.get')
+    def test_get_most_recent_branch_no_branches(self, mock_get, gitlab_provider):
+        """Test getting most recent branch when no branches exist."""
+        mock_response = Mock()
+        mock_response.json.return_value = []
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.get_most_recent_branch("group/project")
+
+        assert result is None
+
+    @patch('requests.Session.get')
+    def test_get_most_recent_branch_invalid_date(self, mock_get, gitlab_provider):
+        """Test getting most recent branch with invalid commit dates."""
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "name": "main",
+                "commit": {
+                    "committed_date": "invalid-date"
+                }
+            },
+            {
+                "name": "develop",
+                "commit": {
+                    "committed_date": "2024-03-16T11:45:00.000Z"
+                }
+            }
+        ]
+        mock_get.return_value = mock_response
+
+        result = gitlab_provider.get_most_recent_branch("group/project")
+
+        assert result == "develop"  # Should skip the invalid date and return the valid one

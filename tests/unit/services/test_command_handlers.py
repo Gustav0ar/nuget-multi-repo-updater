@@ -293,7 +293,9 @@ class TestUpdateNugetCommandHandler:
             allow_downgrade=False,
             report_file='test_report',
             max_repositories=None,
-            use_local_clone=False
+            use_local_clone=False,
+            use_most_recent_branch=False,  # Explicitly disable
+            branch_filter=None
         )
 
         mock_repo_manager_instance = mock_repo_manager.return_value
@@ -303,10 +305,16 @@ class TestUpdateNugetCommandHandler:
 
         self.handler.execute(args)
 
-        # Verify dry run service was called
-        mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
-            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report', False
-        )
+        # Verify dry run service was called with repositories that include target_branch (same as default_branch when not using most recent)
+        called_args = mock_dry_run_instance.simulate_package_updates.call_args[0]
+        repositories_passed = called_args[0]
+        
+        assert len(repositories_passed) == 1
+        assert repositories_passed[0]['target_branch'] == 'main'  # Should be same as default_branch
+        assert called_args[1] == [{'name': 'Package1', 'version': '1.0.0'}]
+        assert called_args[2] == False  # allow_downgrade
+        assert called_args[3] == 'test_report'  # report_file
+        assert called_args[4] == False  # use_local_clone
 
     @patch('src.services.repository_manager.RepositoryManager')
     @patch('src.services.dry_run_service.DryRunService')
@@ -322,7 +330,9 @@ class TestUpdateNugetCommandHandler:
             allow_downgrade=False,
             report_file='test_report',
             max_repositories=None,
-            use_local_clone=True
+            use_local_clone=True,
+            use_most_recent_branch=False,  # Explicitly disable
+            branch_filter=None
         )
 
         mock_repo_manager_instance = mock_repo_manager.return_value
@@ -333,9 +343,15 @@ class TestUpdateNugetCommandHandler:
         self.handler.execute(args)
 
         # Verify dry run service was called with use_local_clone=True
-        mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
-            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report', True
-        )
+        called_args = mock_dry_run_instance.simulate_package_updates.call_args[0]
+        repositories_passed = called_args[0]
+        
+        assert len(repositories_passed) == 1
+        assert repositories_passed[0]['target_branch'] == 'main'  # Should be same as default_branch
+        assert called_args[1] == [{'name': 'Package1', 'version': '1.0.0'}]
+        assert called_args[2] == False  # allow_downgrade
+        assert called_args[3] == 'test_report'  # report_file
+        assert called_args[4] == True  # use_local_clone
 
     @patch('src.services.repository_manager.RepositoryManager')
     @patch('src.services.dry_run_service.DryRunService')
@@ -351,7 +367,9 @@ class TestUpdateNugetCommandHandler:
             allow_downgrade=False,
             report_file=None, # Not in args
             max_repositories=None,
-            use_local_clone=None  # Not provided via args
+            use_local_clone=None,  # Not provided via args
+            use_most_recent_branch=None,  # Not provided via args
+            branch_filter=None
         )
 
         mock_repo_manager_instance = mock_repo_manager.return_value
@@ -362,8 +380,12 @@ class TestUpdateNugetCommandHandler:
         def mock_config_get(key, default=None):
             if key == 'use_local_clone':
                 return True
-            if key == 'report_file':
+            elif key == 'report_file':
                 return 'test_report_from_config'
+            elif key == 'use_most_recent_branch':
+                return False
+            elif key == 'branch_filter':
+                return None
             return default
         
         self.mock_config_service.get.side_effect = mock_config_get
@@ -371,9 +393,15 @@ class TestUpdateNugetCommandHandler:
         self.handler.execute(args)
 
         # Verify dry run service was called with use_local_clone=True and report file from config
-        mock_dry_run_instance.simulate_package_updates.assert_called_once_with(
-            self.sample_repositories, [{'name': 'Package1', 'version': '1.0.0'}], False, 'test_report_from_config', True
-        )
+        called_args = mock_dry_run_instance.simulate_package_updates.call_args[0]
+        repositories_passed = called_args[0]
+        
+        assert len(repositories_passed) == 1
+        assert repositories_passed[0]['target_branch'] == 'main'  # Should be same as default_branch
+        assert called_args[1] == [{'name': 'Package1', 'version': '1.0.0'}]
+        assert called_args[2] == False  # allow_downgrade
+        assert called_args[3] == 'test_report_from_config'  # report_file
+        assert called_args[4] == True  # use_local_clone
 
     @patch('src.services.repository_manager.RepositoryManager')
     @patch('src.services.dry_run_service.DryRunService')
@@ -393,9 +421,9 @@ class TestUpdateNugetCommandHandler:
 
         mock_repo_manager_instance = mock_repo_manager.return_value
         large_repo_list = [
-            {'id': 123, 'name': 'repo1'},
-            {'id': 456, 'name': 'repo2'},
-            {'id': 789, 'name': 'repo3'}
+            {'id': 123, 'name': 'repo1', 'default_branch': 'main'},
+            {'id': 456, 'name': 'repo2', 'default_branch': 'main'},
+            {'id': 789, 'name': 'repo3', 'default_branch': 'main'}
         ]
         mock_repo_manager_instance.get_repositories_from_command_line.return_value = large_repo_list
 
@@ -405,8 +433,12 @@ class TestUpdateNugetCommandHandler:
 
         # Verify only first 2 repositories were passed to dry run
         called_args = mock_dry_run_instance.simulate_package_updates.call_args[0]
-        assert len(called_args[0]) == 2  # repositories argument
-        assert called_args[0] == large_repo_list[:2]
+        repositories_passed = called_args[0]
+        assert len(repositories_passed) == 2  # Should be limited to 2
+        assert repositories_passed[0]['id'] == 123
+        assert repositories_passed[1]['id'] == 456
+        # Each should have target_branch set
+        assert all('target_branch' in repo for repo in repositories_passed)
 
     @patch('src.services.repository_manager.RepositoryManager')
     @patch('src.services.dry_run_service.DryRunService')
@@ -481,6 +513,166 @@ class TestUpdateNugetCommandHandler:
         mock_action.assert_called_once()
         action_args, action_kwargs = mock_action.call_args
         assert action_kwargs['enable_migrations'] is True
+
+    def test_get_target_branch_default_behavior(self):
+        """Test _get_target_branch returns default branch when use_most_recent_branch is False."""
+        args = Namespace(
+            use_most_recent_branch=False,
+            branch_filter=None
+        )
+        repo_info = {'id': 123, 'default_branch': 'main'}
+
+        result = self.handler._get_target_branch(repo_info, args)
+
+        assert result == 'main'
+
+    def test_get_target_branch_most_recent_enabled(self):
+        """Test _get_target_branch uses most recent branch when enabled."""
+        args = Namespace(
+            use_most_recent_branch=True,
+            branch_filter='*main*'
+        )
+        repo_info = {'id': 123, 'default_branch': 'main'}
+
+        self.mock_scm_provider.get_most_recent_branch.return_value = 'hotfix-main'
+
+        result = self.handler._get_target_branch(repo_info, args)
+
+        assert result == 'hotfix-main'
+        self.mock_scm_provider.get_most_recent_branch.assert_called_once_with('123', '*main*')
+
+    def test_get_target_branch_most_recent_from_config(self):
+        """Test _get_target_branch reads settings from config when not in args."""
+        args = Namespace(
+            use_most_recent_branch=None,
+            branch_filter=None
+        )
+        repo_info = {'id': 123, 'default_branch': 'main'}
+
+        def mock_config_get(key, default=None):
+            if key == 'use_most_recent_branch':
+                return True
+            elif key == 'branch_filter':
+                return '*develop*'
+            return default
+
+        self.mock_config_service.get.side_effect = mock_config_get
+        self.mock_scm_provider.get_most_recent_branch.return_value = 'feature-develop'
+
+        result = self.handler._get_target_branch(repo_info, args)
+
+        assert result == 'feature-develop'
+        self.mock_scm_provider.get_most_recent_branch.assert_called_once_with('123', '*develop*')
+
+    def test_get_target_branch_most_recent_fallback_to_default(self):
+        """Test _get_target_branch falls back to default when most recent branch not found."""
+        args = Namespace(
+            use_most_recent_branch=True,
+            branch_filter='*nonexistent*'
+        )
+        repo_info = {'id': 123, 'default_branch': 'main'}
+
+        self.mock_scm_provider.get_most_recent_branch.return_value = None
+
+        result = self.handler._get_target_branch(repo_info, args)
+
+        assert result == 'main'
+        self.mock_scm_provider.get_most_recent_branch.assert_called_once_with('123', '*nonexistent*')
+
+    @patch('src.services.repository_manager.RepositoryManager')
+    @patch('src.services.dry_run_service.DryRunService')
+    @patch('src.services.user_interaction_service.UserInteractionService')
+    def test_execute_dry_run_with_target_branch(self, mock_user_interaction, mock_dry_run, mock_repo_manager):
+        """Test dry run execution with target branch functionality."""
+        args = Namespace(
+            packages=['Package1@1.0.0'],
+            repositories=['123'],
+            repo_file=None,
+            discover_group=None,
+            dry_run=True,
+            allow_downgrade=False,
+            report_file='test_report',
+            max_repositories=None,
+            use_local_clone=False,
+            use_most_recent_branch=True,
+            branch_filter='*main*'
+        )
+
+        mock_repo_manager_instance = mock_repo_manager.return_value
+        mock_repo_manager_instance.get_repositories_from_command_line.return_value = self.sample_repositories
+
+        self.mock_scm_provider.get_most_recent_branch.return_value = 'hotfix-main'
+
+        mock_dry_run_instance = mock_dry_run.return_value
+
+        self.handler.execute(args)
+
+        # Verify dry run service was called with repositories that have target_branch set
+        called_args = mock_dry_run_instance.simulate_package_updates.call_args[0]
+        repositories_with_target = called_args[0]
+        
+        assert len(repositories_with_target) == 1
+        assert repositories_with_target[0]['target_branch'] == 'hotfix-main'
+        self.mock_scm_provider.get_most_recent_branch.assert_called_once_with('123', '*main*')
+
+    @patch('src.services.repository_manager.RepositoryManager')
+    @patch('src.services.user_interaction_service.UserInteractionService')
+    @patch('src.services.command_handlers.MultiPackageUpdateAction')
+    @patch('src.services.git_service.GitService')
+    def test_execute_with_target_branch(self, mock_git_service, mock_action, mock_user_interaction, mock_repo_manager):
+        """Test actual execution with target branch functionality."""
+        args = Namespace(
+            packages=['Package1@1.0.0'],
+            repositories=['123'],
+            repo_file=None,
+            discover_group=None,
+            dry_run=False,
+            allow_downgrade=False,
+            report_file=None,
+            max_repositories=None,
+            use_local_clone=False,
+            enable_migrations=False,
+            strict_migration_mode=False,
+            migration_config=None,
+            use_most_recent_branch=True,
+            branch_filter='*release*'
+        )
+
+        # Mock the config service to return proper values, not Mock objects
+        def mock_config_get(key, default=None):
+            if key == 'report_file':
+                return 'test_report'  # Return a proper string instead of Mock
+            if key == 'migration_settings':
+                return {}
+            if key == 'packages_to_update':
+                return []
+            return default
+        
+        self.mock_config_service.get.side_effect = mock_config_get
+
+        mock_repo_manager_instance = mock_repo_manager.return_value
+        mock_repo_manager_instance.get_repositories_from_command_line.return_value = self.sample_repositories
+
+        self.mock_scm_provider.get_most_recent_branch.return_value = 'release-v2'
+
+        mock_action_instance = mock_action.return_value
+        mock_action_instance.execute.return_value = {
+            'web_url': 'https://gitlab.com/test/repo/-/merge_requests/1',
+            'iid': 1,
+            'target_branch': 'release-v2',
+            'source_branch': 'update-package'
+        }
+
+        with patch('src.services.command_handlers.MigrationConfigurationService'):
+            self.handler.execute(args)
+
+        # Verify that the action was executed with the target branch
+        self.mock_scm_provider.get_most_recent_branch.assert_called_once_with('123', '*release*')
+        mock_action_instance.execute.assert_called_once_with(
+            self.sample_repositories[0]['ssh_url_to_repo'],
+            '123',
+            'release-v2'  # Should use the target branch, not default 'main'
+        )
 
 
 class TestCheckStatusCommandHandler:

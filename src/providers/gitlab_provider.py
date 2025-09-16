@@ -513,3 +513,91 @@ class GitLabProvider(ScmProvider):
 
         logging.info(f"Creating branch {branch_name}")
         return self.create_branch(project_id, branch_name, ref)
+
+    def list_branches(self, project_id: str) -> List[Dict]:
+        """List all branches in a repository."""
+        # URL encode the project_id to handle paths like "group/project"
+        encoded_project_id = quote(str(project_id), safe='')
+        url = f"{self.gitlab_url}/api/v4/projects/{encoded_project_id}/repository/branches"
+        
+        all_branches = []
+        page = 1
+        per_page = 100  # GitLab's default and maximum
+
+        while True:
+            params = {
+                'per_page': per_page,
+                'page': page
+            }
+
+            try:
+                response = self._make_request('get', url, params=params)
+                branches = response.json()
+
+                if not branches:  # No more branches
+                    break
+
+                all_branches.extend(branches)
+
+                # Check if we've gotten less than per_page items, indicating this is the last page
+                if len(branches) < per_page:
+                    break
+
+                page += 1
+
+            except (requests.RequestException, RateLimitExceeded) as e:
+                logging.error(f"Failed to list branches for {project_id} (page {page}): {e}")
+                break
+
+        logging.debug(f"Found {len(all_branches)} branches in repository {project_id}")
+        return all_branches
+
+    def get_most_recent_branch(self, project_id: str, branch_filter: str = None) -> Optional[str]:
+        """Get the branch with the most recent commit, optionally filtered by pattern."""
+        import fnmatch
+        from datetime import datetime
+
+        branches = self.list_branches(project_id)
+        if not branches:
+            logging.warning(f"No branches found in repository {project_id}")
+            return None
+
+        # Filter branches if pattern is provided
+        filtered_branches = branches
+        if branch_filter:
+            filtered_branches = []
+            for branch in branches:
+                branch_name = branch['name']
+                if fnmatch.fnmatch(branch_name, branch_filter):
+                    filtered_branches.append(branch)
+            
+            if not filtered_branches:
+                logging.warning(f"No branches match filter '{branch_filter}' in repository {project_id}")
+                return None
+            
+            logging.info(f"Filtered to {len(filtered_branches)} branches matching pattern '{branch_filter}'")
+
+        # Find the branch with the most recent commit
+        most_recent_branch = None
+        most_recent_date = None
+
+        for branch in filtered_branches:
+            try:
+                # Get commit date from the branch info
+                commit_date_str = branch['commit']['committed_date']
+                # Parse ISO format date: 2024-03-15T10:30:00.000Z
+                commit_date = datetime.fromisoformat(commit_date_str.replace('Z', '+00:00'))
+                
+                if most_recent_date is None or commit_date > most_recent_date:
+                    most_recent_date = commit_date
+                    most_recent_branch = branch['name']
+            except (KeyError, ValueError) as e:
+                logging.warning(f"Could not parse commit date for branch {branch.get('name', 'unknown')}: {e}")
+                continue
+
+        if most_recent_branch:
+            logging.info(f"Found most recent branch: {most_recent_branch} (last commit: {most_recent_date})")
+        else:
+            logging.warning(f"Could not determine most recent branch in repository {project_id}")
+
+        return most_recent_branch

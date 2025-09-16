@@ -6,6 +6,9 @@
   "enable_code_migration": true,
   "migration_config_file": "migration-config.yml",
 
+  "use_most_recent_branch": false,
+  "branch_filter": "*main*",
+
   "packages_to_update": [
     {
       "name": "Microsoft.EntityFrameworkCore",

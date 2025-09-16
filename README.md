@@ -103,6 +103,8 @@ The application supports both JSON and YAML configuration formats:
   "use_local_clone": false,
   "enable_code_migration": true,
   "migration_config_file": "migration-config.yml",
+  "use_most_recent_branch": false,
+  "branch_filter": "*main*",
   "packages_to_update": [
     {
       "name": "Microsoft.EntityFrameworkCore",
@@ -123,6 +125,34 @@ The application supports both JSON and YAML configuration formats:
   "verify_ssl": true,
   "allow_downgrade": false
 }
+```
+
+#### Basic Configuration (`config.yaml`)
+
+```yaml
+gitlab_url: 'https://gitlab.company.com'
+token: 'glpat-xxxxxxxxxxxxxxxxxxxx'
+use_local_clone: false
+enable_code_migration: true
+migration_config_file: 'migration-config.yml'
+use_most_recent_branch: false
+branch_filter: '*main*'
+
+packages_to_update:
+  - name: 'Microsoft.EntityFrameworkCore'
+    version: '7.0.5'
+  - name: 'Newtonsoft.Json'
+    version: '13.0.3'
+
+repositories:
+  - '123'
+  - '456'
+  - 'backend-team/user-service'
+  - 'backend-team/order-service'
+
+report_file: 'reports/package-update.md'
+verify_ssl: true
+allow_downgrade: false
 ```
 
 #### Migration Configuration (`migration-config.yml`)
@@ -193,6 +223,35 @@ migrations:
 }
 ```
 
+#### Discovery Configuration (`config-discover.yaml`)
+
+```yaml
+gitlab_url: 'https://gitlab.company.com'
+token: 'glpat-xxxxxxxxxxxxxxxxxxxx'
+use_local_clone: false
+enable_code_migration: true
+migration_config_file: 'migration-config.yml'
+use_most_recent_branch: false
+branch_filter: '*main*'
+
+packages_to_update:
+  - name: 'Microsoft.EntityFrameworkCore'
+    version: '7.0.5'
+
+discover:
+  group: 'backend-team'
+  owned_only: false
+  member_only: false
+  include_archived: false
+  exclude_forks: true
+  ignore_patterns:
+    - '*-test*'
+    - '*-demo'
+    - '*-ui'
+    - '*-frontend'
+    - 'playground-*'
+```
+
 ## Usage
 
 ### Update NuGet Packages with Code Migration
@@ -257,6 +316,40 @@ python run.py update-nuget --config-file config.json \
   --log-level DEBUG \
   --report-file custom-report.md \
   --migration-config custom-migration-config.yml
+```
+
+#### Using Most Recent Branch
+
+By default, the tool uses the repository's default branch (usually `main` or `master`). You can configure it to use the most recent branch instead:
+
+```bash
+python run.py update-nuget --config-file config.yaml \
+  --use-most-recent-branch \
+  --branch-filter "*main*"
+```
+
+The `--branch-filter` supports wildcard patterns:
+
+- `*main` - Branches ending with "main" (e.g., "hotfix-main", "feature-main")
+- `main*` - Branches starting with "main" (e.g., "main-v2", "main-develop")
+- `*main*` - Branches containing "main" (e.g., "feature-main-fix", "main")
+
+You can also configure this in your config file:
+
+```json
+{
+  "use_most_recent_branch": true,
+  "branch_filter": "*main*",
+  ...
+}
+```
+
+Or in YAML format:
+
+```yaml
+use_most_recent_branch: true
+branch_filter: '*main*'
+# ... other configuration options
 ```
 
 ### Check Merge Request Status
@@ -394,25 +487,27 @@ python tests/run_migration_tests.py --integration
 
 ### Update NuGet Arguments
 
-| Argument              | Description                                                   |
-| --------------------- | ------------------------------------------------------------- |
-| `--packages`          | Package in "name@version" format (can be used multiple times) |
-| `--repositories`      | Comma-separated list of repository IDs or paths               |
-| `--repo-file`         | File containing repository IDs/paths (one per line)           |
-| `--discover-group`    | Discover repositories in GitLab group/namespace               |
-| `--ignore-patterns`   | Comma-separated patterns to ignore in repository names        |
-| `--owned-only`        | Only include repositories owned by the user                   |
-| `--member-only`       | Only include repositories where user is a member              |
-| `--gitlab-url`        | GitLab instance URL (overrides config file)                   |
-| `--gitlab-token`      | GitLab access token (overrides config file)                   |
-| `--include-archived`  | Include archived repositories                                 |
-| `--exclude-forks`     | Exclude forked repositories                                   |
-| `--max-repositories`  | Maximum number of repositories to process                     |
-| `--allow-downgrade`   | Allow package version downgrades                              |
-| `--report-file`       | Output file for update report                                 |
-| `--use-local-clone`   | Use local git cloning mode instead of API mode                |
-| `--no-code-migration` | Disable automatic code migration                              |
-| `--migration-config`  | Path to migration configuration file                          |
+| Argument                   | Description                                                    |
+| -------------------------- | -------------------------------------------------------------- |
+| `--packages`               | Package in "name@version" format (can be used multiple times)  |
+| `--repositories`           | Comma-separated list of repository IDs or paths                |
+| `--repo-file`              | File containing repository IDs/paths (one per line)            |
+| `--discover-group`         | Discover repositories in GitLab group/namespace                |
+| `--ignore-patterns`        | Comma-separated patterns to ignore in repository names         |
+| `--owned-only`             | Only include repositories owned by the user                    |
+| `--member-only`            | Only include repositories where user is a member               |
+| `--gitlab-url`             | GitLab instance URL (overrides config file)                    |
+| `--gitlab-token`           | GitLab access token (overrides config file)                    |
+| `--include-archived`       | Include archived repositories                                  |
+| `--exclude-forks`          | Exclude forked repositories                                    |
+| `--max-repositories`       | Maximum number of repositories to process                      |
+| `--allow-downgrade`        | Allow package version downgrades                               |
+| `--report-file`            | Output file for update report                                  |
+| `--use-local-clone`        | Use local git cloning mode instead of API mode                 |
+| `--no-code-migration`      | Disable automatic code migration                               |
+| `--migration-config`       | Path to migration configuration file                           |
+| `--use-most-recent-branch` | Use the most recent branch instead of default branch           |
+| `--branch-filter`          | Wildcard pattern to filter branches (e.g., "_main_", "main\*") |
 
 ### Check Status Arguments
 

@@ -4,6 +4,10 @@ token: 'your_personal_access_token'
 # Repository processing mode
 use_local_clone: false # Set to true to use local cloning mode (default: false for API mode)
 
+# Branch selection settings
+use_most_recent_branch: false # Use the most recent branch instead of default branch
+branch_filter: null # Wildcard pattern to filter branches (e.g., "*main*", "main*", "*main")
+
 # Code migration settings
 enable_code_migration: true
 migration_config_file: 'migration-config.yml'

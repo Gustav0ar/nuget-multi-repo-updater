@@ -90,8 +90,16 @@ class UpdateNugetCommandHandler:
             if use_local_clone is None and self.config_service:
                 use_local_clone = self.config_service.get('use_local_clone', False)
 
+            # Modify repositories to include target branch information
+            repositories_with_target_branch = []
+            for repo in repositories:
+                repo_copy = repo.copy()
+                target_branch = self._get_target_branch(repo, args)
+                repo_copy['target_branch'] = target_branch
+                repositories_with_target_branch.append(repo_copy)
+
             dry_run_service.simulate_package_updates(
-                repositories, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
+                repositories_with_target_branch, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
             )
             return
 
@@ -139,9 +147,12 @@ class UpdateNugetCommandHandler:
                     strict_migration_mode=strict_migration_mode
                 )
 
+                # Get the target branch (default or most recent)
+                target_branch = self._get_target_branch(repo_info, args)
+
                 result = action.execute(repo_info['ssh_url_to_repo'], 
                                       str(repo_info['id']), 
-                                      repo_info['default_branch'])
+                                      target_branch)
 
                 if result:
                     successful_results.append(result)
@@ -172,6 +183,35 @@ class UpdateNugetCommandHandler:
 
         # Generate comprehensive report
         self._generate_comprehensive_report(successful_results, failed_repositories, rollback_reports, args)
+
+    def _get_target_branch(self, repo_info: Dict, args: Any) -> str:
+        """Get the target branch to use for operations (default or most recent)."""
+        use_most_recent_branch = getattr(args, 'use_most_recent_branch', None)
+        branch_filter = getattr(args, 'branch_filter', None)
+        
+        # Check if use_most_recent_branch should be enabled from config
+        if use_most_recent_branch is None and self.config_service:
+            use_most_recent_branch = self.config_service.get('use_most_recent_branch', False)
+        
+        # Check if branch_filter should be used from config
+        if branch_filter is None and self.config_service:
+            branch_filter = self.config_service.get('branch_filter', None)
+        
+        if use_most_recent_branch:
+            logging.info(f"Looking for most recent branch in repository {repo_info['id']}")
+            most_recent_branch = self.scm_provider.get_most_recent_branch(
+                str(repo_info['id']), 
+                branch_filter
+            )
+            
+            if most_recent_branch:
+                logging.info(f"Using most recent branch '{most_recent_branch}' instead of default branch '{repo_info['default_branch']}'")
+                return most_recent_branch
+            else:
+                logging.warning(f"Could not find most recent branch, falling back to default branch '{repo_info['default_branch']}'")
+                return repo_info['default_branch']
+        
+        return repo_info['default_branch']
 
     def _generate_comprehensive_report(self, successful_results: List[Dict], failed_repositories: List[Dict],
                                      rollback_reports: List[Dict], args: Any) -> None:

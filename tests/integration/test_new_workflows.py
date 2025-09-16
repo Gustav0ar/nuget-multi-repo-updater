@@ -74,6 +74,9 @@ class TestUpdatedWorkflows:
         args.migration_config = None
         args.strict_migration_mode = False
         args.enable_migrations = False
+        # Add the new branch selection attributes
+        args.use_most_recent_branch = False
+        args.branch_filter = None
         
         handler = UpdateNugetCommandHandler(mock_gitlab_provider, mock_config_service)
         
@@ -108,6 +111,9 @@ class TestUpdatedWorkflows:
         args.migration_config = None
         args.strict_migration_mode = False
         args.enable_migrations = False
+        # Add the new branch selection attributes
+        args.use_most_recent_branch = False
+        args.branch_filter = None
         
         handler = UpdateNugetCommandHandler(mock_gitlab_provider, mock_config_service)
         
@@ -208,8 +214,11 @@ migrations:
         args.report_file = None
         args.migration_config = None
         args.strict_migration_mode = False
-        # Explicitly set enable_migrations to False so config service setting is used
-        args.enable_migrations = False
+        # Set enable_migrations to None so config service setting is used
+        args.enable_migrations = None
+        # Add the new branch selection attributes
+        args.use_most_recent_branch = None
+        args.branch_filter = None
         
         handler = UpdateNugetCommandHandler(mock_gitlab_provider, mock_config_service)
         
@@ -248,6 +257,9 @@ migrations:
         args.migration_config = None
         args.strict_migration_mode = False
         args.enable_migrations = False
+        # Add the new branch selection attributes
+        args.use_most_recent_branch = False
+        args.branch_filter = None
         
         handler = UpdateNugetCommandHandler(mock_gitlab_provider, mock_config_service)
         
@@ -276,6 +288,9 @@ migrations:
         args.migration_config = None
         args.strict_migration_mode = False
         args.enable_migrations = False
+        # Add the new branch selection attributes
+        args.use_most_recent_branch = False
+        args.branch_filter = None
         
         # Mock multiple projects
         mock_gitlab_provider.get_project.side_effect = [
