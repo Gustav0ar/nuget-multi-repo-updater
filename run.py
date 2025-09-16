@@ -41,7 +41,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     update_parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='INFO', help='Logging level')
     
     # Migration-specific arguments
-    update_parser.add_argument('--enable-migrations', action='store_true', help='Enable code migrations')
+    update_parser.add_argument('--enable-migrations', default=None, action='store_true', help='Enable code migrations')
     update_parser.add_argument('--migration-config', help='Path to migration configuration file')
     update_parser.add_argument('--strict-migration-mode', action='store_true', help='Rollback everything if migrations fail')
     
