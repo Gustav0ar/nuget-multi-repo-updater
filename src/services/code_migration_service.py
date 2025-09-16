@@ -6,6 +6,7 @@ import json
 import subprocess
 import tempfile
 import os
+import platform
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,45 @@ class CodeMigrationService:
         self.csharp_tool_path = csharp_tool_path
         self._cached_executable_path: Optional[str] = None
         
+    def _normalize_path_for_subprocess(self, path: str) -> str:
+        """Normalize path for subprocess compatibility across platforms."""
+        if not path:
+            return path
+            
+        # Convert to Path object to handle separators properly
+        path_obj = Path(path)
+        
+        # On Windows, convert backslashes to forward slashes for subprocess compatibility
+        # Windows cmd.exe and PowerShell can handle forward slashes
+        if platform.system().lower() == 'windows':
+            return str(path_obj).replace('\\', '/')
+        else:
+            return str(path_obj)
+    
+    def _get_executable_candidates(self, bin_dir: Path) -> List[Path]:
+        """Get executable candidates in priority order based on current OS."""
+        base_name = 'CSharpMigrationTool'
+        candidates = []
+        
+        # Determine OS and set priority order
+        current_os = platform.system().lower()
+        
+        if current_os == 'windows':
+            # Windows: prioritize .exe, then .dll, then no extension
+            candidates = [
+                bin_dir / f'{base_name}.exe',
+                bin_dir / f'{base_name}.dll',
+                bin_dir / base_name
+            ]
+        else:
+            # Unix-like systems: prioritize no extension, then .dll
+            candidates = [
+                bin_dir / base_name,
+                bin_dir / f'{base_name}.dll'
+            ]
+        
+        return candidates
+    
     def _get_executable_path(self) -> Optional[str]:
         """Get the path to the executable, building if necessary."""
         # Return cached path if we already found it
@@ -67,8 +107,8 @@ class CodeMigrationService:
             # Sort by version number (newest first) - properly handle numeric versions
             def parse_net_version(dirname):
                 try:
-                    # Extract version number from netX.Y format
-                    version_str = dirname.removeprefix('net')
+                    # Extract version number from netX.Y format (compatible with older Python)
+                    version_str = dirname.replace('net', '', 1) if dirname.startswith('net') else dirname
                     # Split on '.' and convert to tuple of ints for proper comparison
                     version_parts = tuple(int(x) for x in version_str.split('.'))
                     return version_parts
@@ -79,22 +119,14 @@ class CodeMigrationService:
             target_framework_dirs.sort(key=lambda x: parse_net_version(x.name), reverse=True)
             
             for bin_dir in target_framework_dirs:
-                exe_path = bin_dir / 'CSharpMigrationTool'  # Linux executable
-                exe_path_win = bin_dir / 'CSharpMigrationTool.exe'  # Windows executable
-                dll_path = bin_dir / 'CSharpMigrationTool.dll'
+                # Get executable candidates in OS-appropriate priority order
+                candidates = self._get_executable_candidates(bin_dir)
                 
-                if exe_path.exists():
-                    self._cached_executable_path = str(exe_path)
-                    logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
-                    return self._cached_executable_path
-                elif exe_path_win.exists():
-                    self._cached_executable_path = str(exe_path_win)
-                    logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
-                    return self._cached_executable_path
-                elif dll_path.exists():
-                    self._cached_executable_path = str(dll_path)
-                    logging.info(f"Found C# migration tool DLL: {self._cached_executable_path}")
-                    return self._cached_executable_path
+                for exe_path in candidates:
+                    if exe_path.exists():
+                        self._cached_executable_path = self._normalize_path_for_subprocess(str(exe_path))
+                        logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
+                        return self._cached_executable_path
         
         # If no built binary found, try to build the tool
         return self._build_tool_if_needed(tool_dir)
@@ -143,34 +175,26 @@ class CodeMigrationService:
                 # Sort by version number (newest first) - properly handle numeric versions
                 def parse_net_version(dirname):
                     try:
-                        # Extract version number from netX.Y format
-                        version_str = dirname.removeprefix('net')
+                        # Extract version number from netX.Y format (compatible with older Python)
+                        version_str = dirname.replace('net', '', 1) if dirname.startswith('net') else dirname
                         # Split on '.' and convert to tuple of ints for proper comparison
                         version_parts = tuple(int(x) for x in version_str.split('.'))
                         return version_parts
                     except (ValueError, AttributeError):
-                        # Fallback for non-standard names
+                        # Fallback to string comparison for non-standard names
                         return (0, 0)  # Put unrecognized versions at the end
                 
                 target_framework_dirs.sort(key=lambda x: parse_net_version(x.name), reverse=True)
                 
                 for bin_dir in target_framework_dirs:
-                    exe_path = bin_dir / 'CSharpMigrationTool'
-                    exe_path_win = bin_dir / 'CSharpMigrationTool.exe'
-                    dll_path = bin_dir / 'CSharpMigrationTool.dll'
+                    # Get executable candidates in OS-appropriate priority order
+                    candidates = self._get_executable_candidates(bin_dir)
                     
-                    if exe_path.exists():
-                        self._cached_executable_path = str(exe_path)
-                        logging.info(f"Built and found executable: {self._cached_executable_path}")
-                        return self._cached_executable_path
-                    elif exe_path_win.exists():
-                        self._cached_executable_path = str(exe_path_win)
-                        logging.info(f"Built and found executable: {self._cached_executable_path}")
-                        return self._cached_executable_path
-                    elif dll_path.exists():
-                        self._cached_executable_path = str(dll_path)
-                        logging.info(f"Built and found DLL: {self._cached_executable_path}")
-                        return self._cached_executable_path
+                    for exe_path in candidates:
+                        if exe_path.exists():
+                            self._cached_executable_path = self._normalize_path_for_subprocess(str(exe_path))
+                            logging.info(f"Built and found executable: {self._cached_executable_path}")
+                            return self._cached_executable_path
             
             logging.warning("Built C# migration tool, but executable not found in expected location")
             return None
@@ -198,22 +222,22 @@ class CodeMigrationService:
             # We have a built executable/DLL, use it directly
             if executable_path.endswith('.dll'):
                 # Use dotnet to run the DLL
-                cmd = ['dotnet', executable_path]
+                cmd = ['dotnet', self._normalize_path_for_subprocess(executable_path)]
             else:
                 # Direct executable
-                cmd = [executable_path]
+                cmd = [self._normalize_path_for_subprocess(executable_path)]
                 
             # Add the arguments
             cmd.extend([
-                '--rules-file', rules_file_path
+                '--rules-file', self._normalize_path_for_subprocess(rules_file_path)
             ])
             
             # Add each target file as a separate argument to avoid command line length limits
             for target_file in target_files:
-                cmd.extend(['--target-file', target_file])
+                cmd.extend(['--target-file', self._normalize_path_for_subprocess(target_file)])
             
             if working_directory:
-                cmd.extend(['--working-directory', working_directory])
+                cmd.extend(['--working-directory', self._normalize_path_for_subprocess(working_directory)])
                 
             return cmd, False
         else:
@@ -221,17 +245,17 @@ class CodeMigrationService:
             logging.warning("No built executable found, falling back to 'dotnet run'")
             cmd = [
                 'dotnet', 'run',
-                '--project', self.csharp_tool_path,
+                '--project', self._normalize_path_for_subprocess(self.csharp_tool_path),
                 '--',
-                '--rules-file', rules_file_path
+                '--rules-file', self._normalize_path_for_subprocess(rules_file_path)
             ]
             
             # Add each target file as a separate argument
             for target_file in target_files:
-                cmd.extend(['--target-file', target_file])
+                cmd.extend(['--target-file', self._normalize_path_for_subprocess(target_file)])
             
             if working_directory:
-                cmd.extend(['--working-directory', working_directory])
+                cmd.extend(['--working-directory', self._normalize_path_for_subprocess(working_directory)])
                 
             return cmd, True
         
@@ -315,12 +339,15 @@ class CodeMigrationService:
             else:
                 logging.info(f"Executing batch with pre-built executable: {' '.join(cmd)}")
 
+            # Normalize working directory for subprocess
+            normalized_cwd = self._normalize_path_for_subprocess(working_directory) if working_directory else None
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5-minute timeout per batch
-                cwd=working_directory
+                cwd=normalized_cwd
             )
 
             if result.returncode == 0:
