@@ -252,6 +252,16 @@ class CodeMigrationService:
             return MigrationResult(success=True, modified_files=[], applied_rules=[], errors=[],
                                    summary="No migration rules to apply")
 
+        # Validate that the C# migration tool is available before proceeding
+        if not self.validate_tool_availability():
+            return MigrationResult(
+                success=False,
+                modified_files=[],
+                applied_rules=[],
+                errors=["C# migration tool is not available and could not be built"],
+                summary="Migration failed: C# migration tool unavailable"
+            )
+
         rules_file_path = self._create_rules_file(migration_rules)
         try:
             batch_size = 10
