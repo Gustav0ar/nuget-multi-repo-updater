@@ -3,7 +3,7 @@
   
   "use_local_clone": false,
   
-  "enable_code_migration": true,
+  "enable_code_migrations": true,
   "migration_config_file": "migration-config.yml",
 
   "use_most_recent_branch": false,

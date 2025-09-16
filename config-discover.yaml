@@ -8,7 +8,7 @@ use_most_recent_branch: false # Use the most recent branch instead of default br
 branch_filter: null # Wildcard pattern to filter branches (e.g., "*main*", "main*", "*main")
 
 # Code migration settings
-enable_code_migration: true
+enable_code_migrations: true
 migration_config_file: 'migration-config.yml'
 
 # NuGet package details
