@@ -186,16 +186,21 @@ class UpdateNugetCommandHandler:
 
     def _get_target_branch(self, repo_info: Dict, args: Any) -> str:
         """Get the target branch to use for operations (default or most recent)."""
-        use_most_recent_branch = getattr(args, 'use_most_recent_branch', None)
+        # Check if use_most_recent_branch was explicitly provided via command line
+        if hasattr(args, 'use_most_recent_branch') and args.use_most_recent_branch is not None:
+            use_most_recent_branch = args.use_most_recent_branch
+        elif self.config_service:
+            # Argument not provided or None, check config file
+            use_most_recent_branch = self.config_service.get('use_most_recent_branch', False)
+        else:
+            use_most_recent_branch = False
+            
         branch_filter = getattr(args, 'branch_filter', None)
         
-        # Check if use_most_recent_branch should be enabled from config
-        if use_most_recent_branch is None and self.config_service:
-            use_most_recent_branch = self.config_service.get('use_most_recent_branch', False)
-        
         # Check if branch_filter should be used from config
-        if branch_filter is None and self.config_service:
-            branch_filter = self.config_service.get('branch_filter', None)
+        if not hasattr(args, 'branch_filter') or args.branch_filter is None:
+            if self.config_service:
+                branch_filter = self.config_service.get('branch_filter', None)
         
         if use_most_recent_branch:
             logging.info(f"Looking for most recent branch in repository {repo_info['id']}")
