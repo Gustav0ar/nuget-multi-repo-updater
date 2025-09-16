@@ -91,6 +91,9 @@ def setup_ssl_verification(config_service: ConfigurationService, no_verify_ssl: 
 
     if not verify_ssl:
         logging.warning("SSL certificate verification is DISABLED. This should only be used with trusted self-hosted GitLab instances.")
+        # Suppress SSL warnings when verification is disabled
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     return verify_ssl
 
