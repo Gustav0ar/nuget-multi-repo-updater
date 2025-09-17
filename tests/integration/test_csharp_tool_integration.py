@@ -272,14 +272,14 @@ namespace TestProject
                 cmd = [
                     'dotnet', self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
             else:
                 cmd = [
                     self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
                 
@@ -354,14 +354,14 @@ namespace TestProject
                 cmd = [
                     'dotnet', self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
             else:
                 cmd = [
                     self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
                 
@@ -443,14 +443,14 @@ namespace TestProject
                 cmd = [
                     'dotnet', self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
             else:
                 cmd = [
                     self.tool_path,
                     '--rules-file', rules_file,
-                    '--target-files', cs_file_path,
+                    '--target-file', cs_file_path,
                     '--working-directory', self.project_dir
                 ]
                 

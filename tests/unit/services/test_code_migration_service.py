@@ -6,7 +6,7 @@ import tempfile
 import os
 import json
 import subprocess
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, call
 from src.services.code_migration_service import (
     CodeMigrationService,
     MigrationResult
@@ -94,7 +94,8 @@ class TestCodeMigrationService:
         mock_result.stderr = ''
         
         with patch('subprocess.run', return_value=mock_result), \
-             patch('os.path.exists', return_value=True):
+             patch('os.path.exists', return_value=True), \
+             patch.object(self.service, 'validate_tool_availability', return_value=True):
             
             result = self.service.execute_migrations(target_files, migration_rules)
             
