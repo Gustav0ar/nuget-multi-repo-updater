@@ -98,7 +98,11 @@ class MultiPackageUpdateAction(Action):
                     logging.error("Migration failed in strict mode, rolling back everything")
                     raise Exception("Migration failed in strict mode")
 
-            # Step 6: Create merge request
+            # Step 6: Push changes and create merge request
+            if self.use_local_clone:
+                if not self.strategy.push_changes(branch_name):
+                    raise Exception("Failed to push changes to remote")
+
             mr_result = self._create_merge_request_with_both_commits(
                 repo_id, branch_name, default_branch, package_result, migration_result
             )
@@ -136,7 +140,7 @@ class MultiPackageUpdateAction(Action):
         # For local strategy, commit changes; for API strategy, files are already committed
         if self.use_local_clone:
             commit_message = self._generate_commit_message(updated_packages)
-            if not self.strategy.commit_and_push_changes(modified_files, commit_message, branch_name):
+            if not self.strategy.commit_changes(modified_files, commit_message):
                 raise Exception("Failed to commit package updates")
 
         logging.info(f"Package updates completed: {len(updated_packages)} packages updated in {len(modified_files)} files")

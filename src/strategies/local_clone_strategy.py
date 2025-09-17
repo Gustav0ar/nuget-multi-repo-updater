@@ -176,15 +176,23 @@ class LocalCloneStrategy(RepositoryStrategy):
         """Clean up local repository resources."""
         self.git_service.cleanup_repository()
 
-    def commit_and_push_changes(self, modified_files: List[str], commit_message: str, branch_name: str) -> bool:
-        """Commit and push changes for local strategy."""
+    def commit_changes(self, modified_files: List[str], commit_message: str) -> bool:
+        """Commit changes locally."""
         try:
             self.git_service.add(modified_files)
             self.git_service.commit(commit_message)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to commit changes: {e}")
+            return False
+
+    def push_changes(self, branch_name: str) -> bool:
+        """Push changes to the remote repository."""
+        try:
             self.git_service.push('origin', branch_name)
             return True
         except Exception as e:
-            logging.error(f"Failed to commit and push changes: {e}")
+            logging.error(f"Failed to push changes: {e}")
             return False
 
     def execute_csharp_migration_tool(self, repo_id: str, rules_file: str, target_files: List[str], branch_name: str):
