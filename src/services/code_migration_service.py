@@ -10,12 +10,6 @@ import platform
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import math
-
-
-
-
 
 
 @dataclass
@@ -49,25 +43,25 @@ class CodeMigrationService:
         """Normalize path for subprocess compatibility across platforms."""
         if not path:
             return path
-            
+
         # Convert to Path object to handle separators properly
         path_obj = Path(path)
-        
+
         # On Windows, convert backslashes to forward slashes for subprocess compatibility
         # Windows cmd.exe and PowerShell can handle forward slashes
         if platform.system().lower() == 'windows':
             return str(path_obj).replace('\\', '/')
         else:
             return str(path_obj)
-    
+
     def _get_executable_candidates(self, bin_dir: Path) -> List[Path]:
         """Get executable candidates in priority order based on current OS."""
         base_name = 'CSharpMigrationTool'
         candidates = []
-        
+
         # Determine OS and set priority order
         current_os = platform.system().lower()
-        
+
         if current_os == 'windows':
             # Windows: prioritize .exe, then .dll, then no extension
             candidates = [
@@ -81,9 +75,9 @@ class CodeMigrationService:
                 bin_dir / base_name,
                 bin_dir / f'{base_name}.dll'
             ]
-        
+
         return candidates
-    
+
     def _get_executable_path(self) -> Optional[str]:
         """Get the path to the executable, building if necessary."""
         # Return cached path if we already found it
@@ -135,7 +129,7 @@ class CodeMigrationService:
         """Build the C# migration tool if it's not already built."""
         try:
             # Check if dotnet is available
-            result = subprocess.run(['dotnet', '--info'], 
+            result = subprocess.run(['dotnet', '--info'],
                                   capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
                 logging.warning(".NET SDK not available, cannot build C# migration tool")
@@ -259,22 +253,26 @@ class CodeMigrationService:
                 
             return cmd, True
         
-    def _create_rules_file(self, migration_rules: List[Dict[str, Any]]) -> str:
-        """Create a temporary file for migration rules and return its path."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as rules_file:
-            json.dump({'rules': migration_rules}, rules_file, indent=2)
-            return rules_file.name
-
     def execute_migrations(self, target_files: List[str], migration_rules: List[Dict[str, Any]],
-                           working_directory: str = None) -> MigrationResult:
-        """Execute migrations on the specified C# files in parallel batches."""
+                          working_directory: str = None) -> MigrationResult:
+        """Execute migrations on the specified C# files."""
         if not target_files:
-            return MigrationResult(success=True, modified_files=[], applied_rules=[], errors=[],
-                                   summary="No target files to process")
+            return MigrationResult(
+                success=True,
+                modified_files=[],
+                applied_rules=[],
+                errors=[],
+                summary="No target files to process"
+            )
 
         if not migration_rules:
-            return MigrationResult(success=True, modified_files=[], applied_rules=[], errors=[],
-                                   summary="No migration rules to apply")
+            return MigrationResult(
+                success=True,
+                modified_files=[],
+                applied_rules=[],
+                errors=[],
+                summary="No migration rules to apply"
+            )
 
         # Validate that the C# migration tool is available before proceeding
         if not self.validate_tool_availability():
@@ -286,102 +284,87 @@ class CodeMigrationService:
                 summary="Migration failed: C# migration tool unavailable"
             )
 
-        rules_file_path = self._create_rules_file(migration_rules)
         try:
-            batch_size = 10
-            num_batches = math.ceil(len(target_files) / batch_size)
-            file_batches = [target_files[i:i + batch_size] for i in range(0, len(target_files), batch_size)]
+            # Create temporary rules file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as rules_file:
+                json.dump({'rules': migration_rules}, rules_file, indent=2)
+                rules_file_path = rules_file.name
 
-            max_workers = os.cpu_count() or 1
-            logging.info(f"Processing {len(target_files)} files in {num_batches} batches using up to {max_workers} workers.")
-
-            all_modified_files = set()
-            all_applied_rules = set()
-            all_errors = []
-            overall_success = True
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_batch = {executor.submit(self._execute_batch, rules_file_path, batch, working_directory):
-                                   batch for batch in file_batches}
-
-                for future in as_completed(future_to_batch):
-                    batch_result = future.result()
-                    if not batch_result.success:
-                        overall_success = False
-                    all_modified_files.update(batch_result.modified_files)
-                    all_applied_rules.update(batch_result.applied_rules)
-                    all_errors.extend(batch_result.errors)
-
-            summary = f"Overall migration completed. Success: {overall_success}. "
-            summary += f"Modified files: {len(all_modified_files)}. Applied rules: {len(all_applied_rules)}. "
-            summary += f"Errors: {len(all_errors)}."
-
-            return MigrationResult(
-                success=overall_success,
-                modified_files=sorted(list(all_modified_files)),
-                applied_rules=sorted(list(all_applied_rules)),
-                errors=all_errors,
-                summary=summary
-            )
-        finally:
             try:
-                os.unlink(rules_file_path)
-            except Exception as e:
-                logging.warning(f"Failed to clean up temporary rules file: {e}")
+                # Prepare command arguments using optimized approach
+                cmd, use_dotnet_run = self._prepare_command(rules_file_path, target_files, working_directory)
 
-    def _execute_batch(self, rules_file_path: str, batch_files: List[str], working_directory: Optional[str]) -> MigrationResult:
-        """Execute migration for a single batch of files."""
-        try:
-            cmd, use_dotnet_run = self._prepare_command(rules_file_path, batch_files, working_directory)
+                if use_dotnet_run:
+                    logging.info(f"Using 'dotnet run' (building if needed): {' '.join(cmd)}")
+                else:
+                    logging.info(f"Using pre-built executable: {' '.join(cmd)}")
 
-            if use_dotnet_run:
-                logging.info(f"Executing batch with 'dotnet run': {' '.join(cmd)}")
-            else:
-                logging.info(f"Executing batch with pre-built executable: {' '.join(cmd)}")
+                # Execute the C# migration tool
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minute timeout
+                    cwd=working_directory
+                )
 
-            # Normalize working directory for subprocess
-            normalized_cwd = self._normalize_path_for_subprocess(working_directory) if working_directory else None
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5-minute timeout per batch
-                cwd=normalized_cwd
-            )
-
-            if result.returncode == 0:
-                try:
-                    output_data = json.loads(result.stdout)
+                if result.returncode == 0:
+                    # Parse the JSON output from the C# tool
+                    try:
+                        output_data = json.loads(result.stdout)
+                        return MigrationResult(
+                            success=output_data.get('success', False),
+                            modified_files=output_data.get('modified_files', []),
+                            applied_rules=output_data.get('applied_rules', []),
+                            errors=output_data.get('errors', []),
+                            summary=output_data.get('summary', 'Migration completed')
+                        )
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Failed to parse C# tool output: {e}")
+                        logging.error(f"Tool output: {result.stdout}")
+                        return MigrationResult(
+                            success=False,
+                            modified_files=[],
+                            applied_rules=[],
+                            errors=[f"Failed to parse tool output: {e}"],
+                            summary="Migration failed due to output parsing error"
+                        )
+                else:
+                    logging.error(f"C# migration tool failed with exit code {result.returncode}")
+                    logging.error(f"Tool stderr: {result.stderr}")
                     return MigrationResult(
-                        success=output_data.get('success', False),
-                        modified_files=output_data.get('modified_files', []),
-                        applied_rules=output_data.get('applied_rules', []),
-                        errors=output_data.get('errors', []),
-                        summary=output_data.get('summary', 'Batch completed')
+                        success=False,
+                        modified_files=[],
+                        applied_rules=[],
+                        errors=[f"Tool execution failed: {result.stderr}"],
+                        summary=f"Migration tool failed with exit code {result.returncode}"
                     )
-                except json.JSONDecodeError as e:
-                    logging.error(f"Failed to parse C# tool output for batch: {e}")
-                    return MigrationResult(success=False, modified_files=[], applied_rules=[],
-                                           errors=[f"Failed to parse tool output: {e}"],
-                                           summary="Batch failed due to output parsing error")
-            else:
-                logging.error(f"C# migration tool failed for batch with exit code {result.returncode}")
-                logging.error(f"Tool stderr: {result.stderr}")
-                return MigrationResult(success=False, modified_files=[], applied_rules=[],
-                                       errors=[f"Tool execution failed: {result.stderr}"],
-                                       summary=f"Batch failed with exit code {result.returncode}")
+
+            finally:
+                # Clean up temporary rules file
+                try:
+                    os.unlink(rules_file_path)
+                except Exception as e:
+                    logging.warning(f"Failed to clean up temporary rules file: {e}")
 
         except subprocess.TimeoutExpired:
-            logging.error("C# migration tool timed out for a batch")
-            return MigrationResult(success=False, modified_files=[], applied_rules=[],
-                                   errors=["Migration tool execution timed out for a batch"],
-                                   summary="Batch failed due to timeout")
+            logging.error("C# migration tool timed out")
+            return MigrationResult(
+                success=False,
+                modified_files=[],
+                applied_rules=[],
+                errors=["Migration tool execution timed out"],
+                summary="Migration failed due to timeout"
+            )
         except Exception as e:
-            logging.error(f"Failed to execute C# migration tool for a batch: {e}")
-            return MigrationResult(success=False, modified_files=[], applied_rules=[],
-                                   errors=[f"Execution error: {str(e)}"],
-                                   summary="Batch failed due to execution error")
+            logging.error(f"Failed to execute C# migration tool: {e}")
+            return MigrationResult(
+                success=False,
+                modified_files=[],
+                applied_rules=[],
+                errors=[f"Execution error: {str(e)}"],
+                summary="Migration failed due to execution error"
+            )
             
     def validate_tool_availability(self) -> bool:
         """Check if the C# migration tool is available and functional."""
