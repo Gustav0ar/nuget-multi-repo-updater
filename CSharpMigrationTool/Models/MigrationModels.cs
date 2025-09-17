@@ -37,6 +37,9 @@ public class TargetNode
     [JsonProperty("containing_type")]
     public string? ContainingType { get; set; }
 
+    [JsonProperty("containing_namespace")]
+    public string? ContainingNamespace { get; set; }
+
     [JsonProperty("attributes")]
     public List<string>? Attributes { get; set; }
 
@@ -83,7 +86,7 @@ public class MigrationAction
 public class MigrationResult
 {
     [JsonProperty("success")]
-    public bool Success { get; set; }
+    public bool Success { get; set; } = true;
 
     [JsonProperty("modified_files")]
     public List<string> ModifiedFiles { get; set; } = new();

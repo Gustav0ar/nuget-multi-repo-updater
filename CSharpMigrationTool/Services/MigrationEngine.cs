@@ -23,17 +23,20 @@ public class MigrationEngine
         }
 
         // Generate summary
-        if (result.Success && result.ModifiedFiles.Any())
+        if (result.Errors.Any())
         {
-            result.Summary = $"Successfully applied {result.AppliedRules.Count} rules to {result.ModifiedFiles.Count} files";
+            result.Success = false;
+            result.Summary = $"Migration completed with {result.Errors.Count} errors.";
         }
-        else if (result.Success)
+        else if (result.ModifiedFiles.Any())
         {
-            result.Summary = "No changes were needed";
+            result.Success = true;
+            result.Summary = $"Successfully applied {result.AppliedRules.Count} rules to {result.ModifiedFiles.Count} files.";
         }
         else
         {
-            result.Summary = "Migration completed with errors";
+            result.Success = true;
+            result.Summary = "No changes were needed.";
         }
 
         return result;
@@ -43,6 +46,10 @@ public class MigrationEngine
     {
         var sourceCode = await File.ReadAllTextAsync(filePath);
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: filePath);
+        var compilation = CSharpCompilation.Create(null)
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
         var root = await syntaxTree.GetRootAsync();
 
         var modified = false;
@@ -52,7 +59,7 @@ public class MigrationEngine
         {
             try
             {
-                var (updatedRoot, hasChanges) = ApplyRule(newRoot, rule, filePath, result);
+                var (updatedRoot, hasChanges) = ApplyRule(newRoot, rule, filePath, result, semanticModel);
                 
                 if (hasChanges)
                 {
@@ -75,7 +82,7 @@ public class MigrationEngine
         }
     }
 
-    private (SyntaxNode, bool) ApplyRule(SyntaxNode root, MigrationRule rule, string filePath, MigrationResult result)
+    private (SyntaxNode, bool) ApplyRule(SyntaxNode root, MigrationRule rule, string filePath, MigrationResult result, SemanticModel semanticModel)
     {
         var hasChangesOverall = false;
         var currentRoot = root;
@@ -84,7 +91,7 @@ public class MigrationEngine
         {
             try
             {
-                var (updatedRoot, hasChanges) = ApplyTargetNodeRule(currentRoot, targetNode, rule.Action, filePath, result);
+                var (updatedRoot, hasChanges) = ApplyTargetNodeRule(currentRoot, targetNode, rule.Action, filePath, result, semanticModel);
                 if (hasChanges)
                 {
                     currentRoot = updatedRoot;
@@ -101,13 +108,13 @@ public class MigrationEngine
         return (currentRoot, hasChangesOverall);
     }
 
-    private (SyntaxNode, bool) ApplyTargetNodeRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result)
+    private (SyntaxNode, bool) ApplyTargetNodeRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result, SemanticModel semanticModel)
     {
         try
         {
             return targetNode.Type.ToLowerInvariant() switch
             {
-                "invocationexpression" => ApplyInvocationRule(root, targetNode, action, filePath, result),
+                "invocationexpression" => ApplyInvocationRule(root, targetNode, action, filePath, result, semanticModel),
                 "methoddeclaration" => ApplyMethodDeclarationRule(root, targetNode, action),
                 "classdeclaration" => ApplyClassDeclarationRule(root, targetNode, action),
                 "fielddeclaration" => ApplyFieldDeclarationRule(root, targetNode, action),
@@ -122,11 +129,11 @@ public class MigrationEngine
         }
     }
 
-    private (SyntaxNode, bool) ApplyInvocationRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result)
+    private (SyntaxNode, bool) ApplyInvocationRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result, SemanticModel semanticModel)
     {
         var invocations = root.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
-            .Where(inv => IsMatchingInvocation(inv, targetNode))
+            .Where(inv => IsMatchingInvocation(inv, targetNode, semanticModel))
             .ToList();
 
         if (!invocations.Any())
@@ -152,53 +159,33 @@ public class MigrationEngine
         }
     }
 
-    private bool IsMatchingInvocation(InvocationExpressionSyntax invocation, TargetNode targetNode)
+    private bool IsMatchingInvocation(InvocationExpressionSyntax invocation, TargetNode targetNode, SemanticModel semanticModel)
     {
-        // Extract method name from invocation
-        var methodName = GetMethodName(invocation);
-        
-        // Check method name match
-        if (!string.IsNullOrEmpty(targetNode.MethodName) && 
-            !string.Equals(methodName, targetNode.MethodName, StringComparison.OrdinalIgnoreCase))
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+        if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
         {
             return false;
         }
 
-        // Check containing type if specified
-        if (!string.IsNullOrEmpty(targetNode.ContainingType))
+        if (!string.IsNullOrEmpty(targetNode.MethodName) && 
+            !string.Equals(methodSymbol.Name, targetNode.MethodName, StringComparison.OrdinalIgnoreCase))
         {
-            var containingType = GetContainingTypeName(invocation);
-            if (!string.Equals(containingType, targetNode.ContainingType, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(targetNode.ContainingType) && 
+            !string.Equals(methodSymbol.ContainingType.Name, targetNode.ContainingType, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(targetNode.ContainingNamespace) && 
+            !string.Equals(methodSymbol.ContainingNamespace.ToDisplayString(), targetNode.ContainingNamespace, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
         }
 
         return true;
-    }
-
-    private string GetMethodName(InvocationExpressionSyntax invocation)
-    {
-        return invocation.Expression switch
-        {
-            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.ValueText,
-            _ => string.Empty
-        };
-    }
-
-    private string GetContainingTypeName(InvocationExpressionSyntax invocation)
-    {
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-        {
-            return memberAccess.Expression switch
-            {
-                IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-                MemberAccessExpressionSyntax nestedAccess => nestedAccess.Name.Identifier.ValueText,
-                _ => string.Empty
-            };
-        }
-        return string.Empty;
     }
 
     private (SyntaxNode, bool) ApplyRemoveInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action, string filePath, MigrationResult result)
@@ -231,36 +218,27 @@ public class MigrationEngine
     {
         var parent = invocation.Parent;
 
-        // Handle chained method calls
-        if (parent is MemberAccessExpressionSyntax memberAccess && memberAccess.Expression == invocation)
+        if (parent is ExpressionStatementSyntax statement)
+        {
+            // This is a standalone statement, remove the entire statement
+            var newRoot = root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia);
+            return (newRoot ?? root, newRoot != null);
+        }
+        else if (parent is MemberAccessExpressionSyntax memberAccess && memberAccess.Expression == invocation)
         {
             // This invocation is part of a chain: someObject.ThisMethod().NextMethod()
             // We need to replace the entire member access with just the next part
             var grandParent = memberAccess.Parent;
-            if (grandParent is InvocationExpressionSyntax parentInvocation)
+            if (grandParent != null)
             {
-                // Replace the chain by removing this invocation
-                var newExpression = invocation.Expression;
-                var newInvocation = parentInvocation.WithExpression(newExpression);
-                return (root.ReplaceNode(parentInvocation, newInvocation), true);
+                return (root.ReplaceNode(memberAccess, invocation.Expression), true);
             }
-        }
-        else if (parent is ExpressionStatementSyntax statement)
-        {
-            // This is a standalone statement, remove the entire statement
-            var removedRoot = root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia);
-            return removedRoot != null ? (removedRoot, true) : (root, false);
         }
         else if (invocation.Expression is MemberAccessExpressionSyntax chainedAccess)
         {
             // This invocation is at the end of a chain: someObject.Method1().ThisMethod()
             // Replace with just the object and previous methods
-            var newExpression = chainedAccess.Expression;
-            if (parent is ExpressionStatementSyntax chainedStatement)
-            {
-                var newStatement = chainedStatement.WithExpression(newExpression);
-                return (root.ReplaceNode(chainedStatement, newStatement), true);
-            }
+            return (root.ReplaceNode(invocation, chainedAccess.Expression), true);
         }
 
         return (root, false);
