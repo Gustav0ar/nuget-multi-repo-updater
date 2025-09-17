@@ -135,6 +135,7 @@ class MultiPackageUpdateAction(Action):
         )
 
         if not modified_files:
+            logging.error("No files were modified during package update")
             return {'success': False, 'updated_packages': [], 'modified_files': []}
 
         # For local strategy, commit changes; for API strategy, files are already committed
@@ -158,7 +159,7 @@ class MultiPackageUpdateAction(Action):
         applicable_migrations = self._determine_applicable_migrations(updated_packages)
         
         if not applicable_migrations:
-            logging.info("No applicable migrations found")
+            logging.error("No applicable migrations found")
             return MigrationResult(
                 success=True,
                 modified_files=[],
@@ -207,6 +208,8 @@ class MultiPackageUpdateAction(Action):
                     self._upload_migrated_files(repo_id, migration_result.modified_files, branch_name)
 
                 logging.info(f"Code migrations completed: {len(migration_result.applied_rules)} rules applied")
+            else:
+                logging.error(f"Migration result: {migration_result.to_dict() if migration_result else None}")
 
             return migration_result or MigrationResult(
                 success=False,
@@ -250,18 +253,8 @@ class MultiPackageUpdateAction(Action):
             package_name = package['name']
             new_version = package['version']
             
-            # Check if package has explicit migration rule mapping
-            migration_rule_id = package.get('migration_rule')
-            if migration_rule_id:
-                migrations = self.migration_config_service.get_migrations_by_package_and_rule_id(
-                    package_name, migration_rule_id
-                )
-                applicable_migrations.extend(migrations)
-            else:
-                # Check for version-based migrations
-                # We need the old version for this, which we don't have in this context
-                # This could be enhanced to track old versions during the update process
-                pass
+            migrations = self.migration_config_service.get_migrations_for_package(package_name, new_version)
+            applicable_migrations.extend(migrations)
 
         return applicable_migrations
 

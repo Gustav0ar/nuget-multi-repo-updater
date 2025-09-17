@@ -125,6 +125,17 @@ class MigrationConfigurationService:
                 
         return applicable
         
+    def get_migrations_for_package(self, package_name: str, new_version: str) -> List[MigrationConfiguration]:
+        """Get all applicable migrations for a package version change."""
+        applicable = []
+        
+        for migration in self.migrations.values():
+            if (migration.package_name.lower() == package_name.lower() and
+                migration.is_applicable("0.0.0", new_version)):
+                applicable.append(migration)
+                
+        return applicable
+
     def get_migrations_by_package_and_rule_id(self, package_name: str, migration_rule_id: str) -> List[MigrationConfiguration]:
         """Get migrations for a package that match a specific rule ID from config."""
         matching = []

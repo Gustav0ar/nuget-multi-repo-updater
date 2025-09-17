@@ -161,10 +161,35 @@ public class MigrationEngine
 
     private bool IsMatchingInvocation(InvocationExpressionSyntax invocation, TargetNode targetNode, SemanticModel semanticModel)
     {
-        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-        if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
+        IMethodSymbol? methodSymbol = null;
+
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
+            methodSymbol = symbolInfo.Symbol as IMethodSymbol;
+
+            if (methodSymbol == null && symbolInfo.CandidateSymbols.Any())
+            {
+                methodSymbol = symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+            }
+        }
+        else
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+            methodSymbol = symbolInfo.Symbol as IMethodSymbol;
+        }
+
+        if (methodSymbol == null)
         {
             return false;
+        }
+
+        Console.WriteLine($"Method: {methodSymbol.Name}, Type: {methodSymbol.ContainingType.Name}, Namespace: {methodSymbol.ContainingNamespace.ToDisplayString()}");
+
+        // For extension methods, the symbol needs to be reduced
+        if (methodSymbol.IsExtensionMethod)
+        {
+            methodSymbol = methodSymbol.ReducedFrom ?? methodSymbol;
         }
 
         if (!string.IsNullOrEmpty(targetNode.MethodName) && 

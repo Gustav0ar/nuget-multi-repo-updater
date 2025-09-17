@@ -210,7 +210,8 @@ class LocalCloneStrategy(RepositoryStrategy):
             return None
         
         # Execute migration tool
-        migration_service = CodeMigrationService("./CSharpMigrationTool")
+        csharp_tool_path = os.path.abspath("CSharpMigrationTool")
+        migration_service = CodeMigrationService(csharp_tool_path)
         return migration_service.execute_migrations(target_files, rules, self.git_service.local_path)
 
     def _delete_branch_if_exists(self, branch_name: str, default_branch: str):

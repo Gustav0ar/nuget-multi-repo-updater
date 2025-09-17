@@ -18,9 +18,10 @@ from src.services.rollback_service import TransactionException
 class UpdateNugetCommandHandler:
     """Handles the update-nuget command execution with migration support."""
 
-    def __init__(self, scm_provider: ScmProvider, config_service: ConfigurationService):
+    def __init__(self, scm_provider: ScmProvider, config_service: ConfigurationService, strategy: Any = None):
         self.scm_provider = scm_provider
         self.config_service = config_service
+        self.strategy = strategy
 
     def execute(self, args: Any) -> None:
         """Execute the update-nuget command with migration support."""
@@ -155,6 +156,9 @@ class UpdateNugetCommandHandler:
                     enable_migrations=enable_migrations,
                     strict_migration_mode=strict_migration_mode
                 )
+
+                if self.strategy:
+                    action.strategy = self.strategy
 
                 # Get the target branch (default or most recent)
                 target_branch = self._get_target_branch(repo_info, args)
