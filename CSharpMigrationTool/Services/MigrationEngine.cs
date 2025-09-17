@@ -42,8 +42,8 @@ public class MigrationEngine
     private async Task ProcessFileAsync(string filePath, List<MigrationRule> rules, MigrationResult result)
     {
         var sourceCode = await File.ReadAllTextAsync(filePath);
-        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-        var root = syntaxTree.GetRoot();
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: filePath);
+        var root = await syntaxTree.GetRootAsync();
 
         var modified = false;
         var newRoot = root;
@@ -52,7 +52,7 @@ public class MigrationEngine
         {
             try
             {
-                var (updatedRoot, hasChanges) = ApplyRule(newRoot, rule);
+                var (updatedRoot, hasChanges) = ApplyRule(newRoot, rule, filePath, result);
                 
                 if (hasChanges)
                 {
@@ -63,7 +63,7 @@ public class MigrationEngine
             }
             catch (Exception ex)
             {
-                result.AddError($"Error applying rule '{rule.Name}' to {filePath}: {ex.Message}");
+                result.AddError($"An unexpected error occurred while applying rule '{rule.Name}' to {filePath}: {ex.Message}\nStack Trace: {ex.StackTrace}");
             }
         }
 
@@ -75,35 +75,54 @@ public class MigrationEngine
         }
     }
 
-    private (SyntaxNode, bool) ApplyRule(SyntaxNode root, MigrationRule rule)
+    private (SyntaxNode, bool) ApplyRule(SyntaxNode root, MigrationRule rule, string filePath, MigrationResult result)
     {
+        var hasChangesOverall = false;
+        var currentRoot = root;
+
         foreach (var targetNode in rule.TargetNodes)
         {
-            var (updatedRoot, hasChanges) = ApplyTargetNodeRule(root, targetNode, rule.Action);
-            if (hasChanges)
+            try
             {
-                root = updatedRoot;
-                return (root, true);
+                var (updatedRoot, hasChanges) = ApplyTargetNodeRule(currentRoot, targetNode, rule.Action, filePath, result);
+                if (hasChanges)
+                {
+                    currentRoot = updatedRoot;
+                    hasChangesOverall = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                var lineSpan = currentRoot.GetLocation().GetLineSpan();
+                result.AddError($"Error applying target node rule in {filePath} at line {lineSpan.StartLinePosition.Line + 1}: {ex.Message}\nStack Trace: {ex.StackTrace}");
             }
         }
         
-        return (root, false);
+        return (currentRoot, hasChangesOverall);
     }
 
-    private (SyntaxNode, bool) ApplyTargetNodeRule(SyntaxNode root, TargetNode targetNode, MigrationAction action)
+    private (SyntaxNode, bool) ApplyTargetNodeRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result)
     {
-        return targetNode.Type.ToLowerInvariant() switch
+        try
         {
-            "invocationexpression" => ApplyInvocationRule(root, targetNode, action),
-            "methoddeclaration" => ApplyMethodDeclarationRule(root, targetNode, action),
-            "classdeclaration" => ApplyClassDeclarationRule(root, targetNode, action),
-            "fielddeclaration" => ApplyFieldDeclarationRule(root, targetNode, action),
-            "parameterdeclaration" => ApplyParameterDeclarationRule(root, targetNode, action),
-            _ => (root, false)
-        };
+            return targetNode.Type.ToLowerInvariant() switch
+            {
+                "invocationexpression" => ApplyInvocationRule(root, targetNode, action, filePath, result),
+                "methoddeclaration" => ApplyMethodDeclarationRule(root, targetNode, action),
+                "classdeclaration" => ApplyClassDeclarationRule(root, targetNode, action),
+                "fielddeclaration" => ApplyFieldDeclarationRule(root, targetNode, action),
+                "parameterdeclaration" => ApplyParameterDeclarationRule(root, targetNode, action),
+                _ => (root, false)
+            };
+        }
+        catch (Exception ex)
+        {
+            result.AddError($"Error applying target node rule for type '{targetNode.Type}' in {filePath}: {ex.Message}\nStack Trace: {ex.StackTrace}");
+            return (root, false);
+        }
     }
 
-    private (SyntaxNode, bool) ApplyInvocationRule(SyntaxNode root, TargetNode targetNode, MigrationAction action)
+    private (SyntaxNode, bool) ApplyInvocationRule(SyntaxNode root, TargetNode targetNode, MigrationAction action, string filePath, MigrationResult result)
     {
         var invocations = root.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
@@ -113,12 +132,24 @@ public class MigrationEngine
         if (!invocations.Any())
             return (root, false);
 
-        return action.Type.ToLowerInvariant() switch
+        try
         {
-            "remove_invocation" => ApplyRemoveInvocation(root, invocations, action),
-            "replace_invocation" => ApplyReplaceInvocation(root, invocations, action),
-            _ => (root, false)
-        };
+            return action.Type.ToLowerInvariant() switch
+            {
+                "remove_invocation" => ApplyRemoveInvocation(root, invocations, action, filePath, result),
+                "replace_invocation" => ApplyReplaceInvocation(root, invocations, action, filePath, result),
+                _ => (root, false)
+            };
+        }
+        catch (Exception ex)
+        {
+            foreach (var invocation in invocations)
+            {
+                var lineSpan = invocation.GetLocation().GetLineSpan();
+                result.AddError($"Error applying invocation rule '{action.Type}' in {filePath} at line {lineSpan.StartLinePosition.Line + 1}: {ex.Message}\nStack Trace: {ex.StackTrace}");
+            }
+            return (root, false);
+        }
     }
 
     private bool IsMatchingInvocation(InvocationExpressionSyntax invocation, TargetNode targetNode)
@@ -170,18 +201,26 @@ public class MigrationEngine
         return string.Empty;
     }
 
-    private (SyntaxNode, bool) ApplyRemoveInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action)
+    private (SyntaxNode, bool) ApplyRemoveInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action, string filePath, MigrationResult result)
     {
         var newRoot = root;
         var hasChanges = false;
 
         foreach (var invocation in invocations)
         {
-            var (updatedRoot, changed) = RemoveInvocationSmartly(newRoot, invocation, action);
-            if (changed)
+            try
             {
-                newRoot = updatedRoot;
-                hasChanges = true;
+                var (updatedRoot, changed) = RemoveInvocationSmartly(newRoot, invocation, action);
+                if (changed)
+                {
+                    newRoot = updatedRoot;
+                    hasChanges = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                var lineSpan = invocation.GetLocation().GetLineSpan();
+                result.AddError($"Error removing invocation in {filePath} at line {lineSpan.StartLinePosition.Line + 1}: {ex.Message}\nStack Trace: {ex.StackTrace}");
             }
         }
 
@@ -227,7 +266,7 @@ public class MigrationEngine
         return (root, false);
     }
 
-    private (SyntaxNode, bool) ApplyReplaceInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action)
+    private (SyntaxNode, bool) ApplyReplaceInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action, string filePath, MigrationResult result)
     {
         if (string.IsNullOrEmpty(action.ReplacementMethod))
             return (root, false);
@@ -237,9 +276,17 @@ public class MigrationEngine
 
         foreach (var invocation in invocations)
         {
-            var newInvocation = ReplaceMethodName(invocation, action.ReplacementMethod);
-            newRoot = newRoot.ReplaceNode(invocation, newInvocation);
-            hasChanges = true;
+            try
+            {
+                var newInvocation = ReplaceMethodName(invocation, action.ReplacementMethod);
+                newRoot = newRoot.ReplaceNode(invocation, newInvocation);
+                hasChanges = true;
+            }
+            catch (Exception ex)
+            {
+                var lineSpan = invocation.GetLocation().GetLineSpan();
+                result.AddError($"Error replacing invocation in {filePath} at line {lineSpan.StartLinePosition.Line + 1}: {ex.Message}\nStack Trace: {ex.StackTrace}");
+            }
         }
 
         return (newRoot, hasChanges);
