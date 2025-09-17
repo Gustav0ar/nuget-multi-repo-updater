@@ -89,6 +89,8 @@ class UpdateNugetCommandHandler:
             use_local_clone = getattr(args, 'use_local_clone', None)
             if use_local_clone is None and self.config_service:
                 use_local_clone = self.config_service.get('use_local_clone', False)
+            if use_local_clone is None:
+                use_local_clone = False
 
             # Modify repositories to include target branch information
             repositories_with_target_branch = []
@@ -133,6 +135,13 @@ class UpdateNugetCommandHandler:
             rollback_settings = self.config_service.get('rollback_settings', {})
             strict_migration_mode = rollback_settings.get('strict_migration_mode', False)
 
+        # Get use_local_clone setting from command args or config
+        use_local_clone = getattr(args, 'use_local_clone', None)
+        if use_local_clone is None and self.config_service:
+            use_local_clone = self.config_service.get('use_local_clone', False)
+        if use_local_clone is None:
+            use_local_clone = False
+
         for repo_info in repositories:
             try:
                 # Create enhanced action with migration support
@@ -141,7 +150,7 @@ class UpdateNugetCommandHandler:
                     scm_provider=self.scm_provider,
                     packages=packages_to_update,
                     allow_downgrade=args.allow_downgrade,
-                    use_local_clone=args.use_local_clone,
+                    use_local_clone=use_local_clone,
                     migration_config_service=migration_config_service,
                     enable_migrations=enable_migrations,
                     strict_migration_mode=strict_migration_mode
