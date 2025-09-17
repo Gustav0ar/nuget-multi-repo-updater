@@ -64,7 +64,7 @@ class TestCSharpMigrationTool:
             import subprocess
             
             # Check if dotnet is available
-            result = subprocess.run(['dotnet', '--version'], 
+            result = subprocess.run(['dotnet', '--info'], 
                                   capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
                 print("Warning: .NET SDK not available, cannot build C# migration tool")

@@ -135,7 +135,7 @@ class CodeMigrationService:
         """Build the C# migration tool if it's not already built."""
         try:
             # Check if dotnet is available
-            result = subprocess.run(['dotnet', '--version'], 
+            result = subprocess.run(['dotnet', '--info'], 
                                   capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
                 logging.warning(".NET SDK not available, cannot build C# migration tool")
