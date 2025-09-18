@@ -140,7 +140,7 @@ namespace SampleProject
             try:
                 result = subprocess.run([
                     'dotnet', str(csharp_tool_path), 
-                    '--target-files', sample_cs, 
+                    '--target-file', sample_cs, 
                     '--rules-file', rules_file
                 ], capture_output=True, text=True, timeout=10)
                 

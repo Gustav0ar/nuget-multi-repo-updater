@@ -46,9 +46,50 @@ public class MigrationEngine
     {
         var sourceCode = await File.ReadAllTextAsync(filePath);
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: filePath);
-        var compilation = CSharpCompilation.Create(null)
-            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
-            .AddSyntaxTrees(syntaxTree);
+        
+        // Create compilation with more comprehensive references
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+        };
+
+        // Add runtime assemblies
+        try
+        {
+            var runtimePath = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+            var runtimeAssemblies = new[]
+            {
+                "System.Runtime.dll",
+                "System.Collections.dll",
+                "System.Linq.dll",
+                "System.Private.CoreLib.dll",
+                "netstandard.dll"
+            };
+
+            foreach (var assembly in runtimeAssemblies)
+            {
+                var assemblyPath = Path.Combine(runtimePath, assembly);
+                if (File.Exists(assemblyPath))
+                {
+                    references.Add(MetadataReference.CreateFromFile(assemblyPath));
+                }
+            }
+        }
+        catch
+        {
+            // Continue with basic references if runtime assembly loading fails
+        }
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: "TempAssembly",
+            syntaxTrees: new[] { syntaxTree },
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+        );
+        
         var semanticModel = compilation.GetSemanticModel(syntaxTree);
         var root = await syntaxTree.GetRootAsync();
 
@@ -163,53 +204,96 @@ public class MigrationEngine
     {
         IMethodSymbol? methodSymbol = null;
 
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+        try
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
-            methodSymbol = symbolInfo.Symbol as IMethodSymbol;
-
-            if (methodSymbol == null && symbolInfo.CandidateSymbols.Any())
+            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
-                methodSymbol = symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+                var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
+                methodSymbol = symbolInfo.Symbol as IMethodSymbol;
+
+                if (methodSymbol == null && symbolInfo.CandidateSymbols.Any())
+                {
+                    methodSymbol = symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+                }
+            }
+            else
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                methodSymbol = symbolInfo.Symbol as IMethodSymbol;
             }
         }
-        else
+        catch
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-            methodSymbol = symbolInfo.Symbol as IMethodSymbol;
+            // Fall back to syntax-based matching if semantic analysis fails
+            methodSymbol = null;
         }
 
-        if (methodSymbol == null)
+        // If semantic analysis succeeded, use it
+        if (methodSymbol != null)
         {
-            return false;
+            // Debug output to stderr to avoid interfering with JSON output
+            Console.Error.WriteLine($"Semantic: Method: {methodSymbol.Name}, Type: {methodSymbol.ContainingType.Name}, Namespace: {methodSymbol.ContainingNamespace.ToDisplayString()}");
+
+            // For extension methods, the symbol needs to be reduced
+            if (methodSymbol.IsExtensionMethod)
+            {
+                methodSymbol = methodSymbol.ReducedFrom ?? methodSymbol;
+            }
+
+            if (!string.IsNullOrEmpty(targetNode.MethodName) && 
+                !string.Equals(methodSymbol.Name, targetNode.MethodName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(targetNode.ContainingType) && 
+                !string.Equals(methodSymbol.ContainingType.Name, targetNode.ContainingType, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(targetNode.ContainingNamespace) && 
+                !string.Equals(methodSymbol.ContainingNamespace.ToDisplayString(), targetNode.ContainingNamespace, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
-        Console.WriteLine($"Method: {methodSymbol.Name}, Type: {methodSymbol.ContainingType.Name}, Namespace: {methodSymbol.ContainingNamespace.ToDisplayString()}");
+        // Fall back to syntax-based matching
+        Console.Error.WriteLine("Falling back to syntax-based matching");
+        return IsMatchingInvocationSyntaxBased(invocation, targetNode);
+    }
 
-        // For extension methods, the symbol needs to be reduced
-        if (methodSymbol.IsExtensionMethod)
+    private bool IsMatchingInvocationSyntaxBased(InvocationExpressionSyntax invocation, TargetNode targetNode)
+    {
+        // Extract method name from syntax
+        string? methodName = null;
+        
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
-            methodSymbol = methodSymbol.ReducedFrom ?? methodSymbol;
+            methodName = memberAccess.Name.Identifier.ValueText;
+        }
+        else if (invocation.Expression is IdentifierNameSyntax identifier)
+        {
+            methodName = identifier.Identifier.ValueText;
         }
 
-        if (!string.IsNullOrEmpty(targetNode.MethodName) && 
-            !string.Equals(methodSymbol.Name, targetNode.MethodName, StringComparison.OrdinalIgnoreCase))
+        Console.Error.WriteLine($"Syntax: Method name: {methodName}");
+
+        // Match method name
+        if (!string.IsNullOrEmpty(targetNode.MethodName))
         {
-            return false;
+            if (string.IsNullOrEmpty(methodName) || 
+                !string.Equals(methodName, targetNode.MethodName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
         }
 
-        if (!string.IsNullOrEmpty(targetNode.ContainingType) && 
-            !string.Equals(methodSymbol.ContainingType.Name, targetNode.ContainingType, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrEmpty(targetNode.ContainingNamespace) && 
-            !string.Equals(methodSymbol.ContainingNamespace.ToDisplayString(), targetNode.ContainingNamespace, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
+        // For syntax-based matching, we can't reliably match containing type/namespace
+        // without semantic analysis, so we'll be more permissive
         return true;
     }
 

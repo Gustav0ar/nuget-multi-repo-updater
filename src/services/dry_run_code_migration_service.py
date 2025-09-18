@@ -115,10 +115,14 @@ class DryRunCodeMigrationService:
                     'dotnet', 'run',
                     '--project', self.csharp_tool_path,
                     '--',
-                    '--rules-file', rules_file_path,
-                    '--target-files', ','.join(target_files),
-                    '--dry-run'  # Add dry-run flag if supported
+                    '--rules-file', rules_file_path
                 ]
+                
+                # Add each target file individually
+                for target_file in target_files:
+                    cmd.extend(['--target-file', target_file])
+                    
+                cmd.append('--dry-run')  # Add dry-run flag if supported
                 
                 if working_directory:
                     cmd.extend(['--working-directory', working_directory])
