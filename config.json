@@ -13,12 +13,12 @@
     {
       "name": "Microsoft.EntityFrameworkCore",
       "version": "7.0.5",
-      "migration_rule": "ef-core-v7-migration"
+      "migration_rule": "ef-core-migration"
     },
     {
       "name": "Newtonsoft.Json",
       "version": "13.0.3",
-      "migration_rule": "newtonsoft-json-migration"
+      "migration_rule": "newtonsoft-migration"
     }
   ],
   "report_file": "reports/entity-framework-update.md",

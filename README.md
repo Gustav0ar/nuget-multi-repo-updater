@@ -269,6 +269,20 @@ With code migration enabled (via config or `--enable-migrations`), this will:
 3. Create two separate commits (package updates + code changes)
 4. Automatically rollback on failure
 
+#### Local Execution Mode (No API)
+
+To run updates locally without using the GitLab API for file operations (useful for testing or when API access is restricted):
+
+```bash
+python run.py update-nuget --config-file config.json --use-local-clone
+```
+
+This mode:
+1. Clones the repository locally
+2. Applies changes (package updates + migrations)
+3. Pushes changes to the remote
+4. Creates a merge request via API
+
 #### Disable Code Migration
 
 There is no CLI flag to force-disable migrations if they are enabled in the config file. To disable migrations, set `enable_code_migrations: false` (or `migration_settings.enabled: false`) in your config.
@@ -402,6 +416,21 @@ python run.py update-nuget --config-file config.json --dry-run
 - Merge request creation preview with branch information
 - Comprehensive summary with file modification counts
 
+### Local Dry Run Mode
+
+Perform a dry run by cloning repositories locally and applying changes without pushing. This is useful for verifying that changes (including code migrations) are applied correctly on your local machine.
+
+```bash
+python run.py update-nuget --config-file config.json --dry-run --use-local-clone
+```
+
+**Local Dry Run Features:**
+
+- **Real Execution**: Clones repositories to a temporary directory and applies actual changes.
+- **Code Migration Verification**: Runs the C# migration tool and modifies files locally, allowing you to inspect the results.
+- **No Side Effects**: Does not push changes or create merge requests.
+- **Detailed Reporting**: Reports exactly which files were modified by package updates and code migrations.
+
 ## Code Migration Features
 
 ### Migration Rules
@@ -507,7 +536,7 @@ python tests/run_migration_tests.py --integration
 | `--max-repositories`       | Maximum number of repositories to process                      |
 | `--allow-downgrade`        | Allow package version downgrades                               |
 | `--report-file`            | Output file for update report                                  |
-| `--use-local-clone`        | Use local git cloning mode instead of API mode                 |
+| `--use-local-clone`        | Use local git cloning mode (required for local dry run)        |
 | `--enable-migrations`      | Enable automatic code migrations                               |
 | `--migration-config`       | Path to migration configuration file                           |
 | `--strict-migration-mode`  | Roll back everything if migrations fail                        |

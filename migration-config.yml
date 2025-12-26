@@ -1,20 +1,56 @@
 migrations:
-  - id: 'entityframework-remove-obsolete'
+  # 1. ASP.NET Core Migration
+  # Real-world scenario: IHostingEnvironment was obsolete in 3.0 and removed in later versions.
+  # Replaced by IWebHostEnvironment.
+  - id: 'aspnet-core-migration'
+    package_name: 'Microsoft.AspNetCore.App'
+    description: 'Migrate ASP.NET Core legacy hosting types'
+    version_conditions:
+      - type: 'greater_than_or_equal'
+        version: '3.0.0'
+    rules:
+      - name: 'Replace IHostingEnvironment field type'
+        target_nodes:
+          - type: 'FieldDeclaration'
+            identifier: 'IHostingEnvironment'
+        action:
+          type: 'replace_field_type'
+          replacement_type: 'IWebHostEnvironment'
+      
+      - name: 'Replace IHostingEnvironment parameter type'
+        target_nodes:
+          - type: 'ParameterDeclaration'
+            identifier: 'IHostingEnvironment'
+        action:
+          type: 'replace_parameter_type'
+          replacement_type: 'IWebHostEnvironment'
+
+  # 2. Entity Framework Core Migration
+  # Real-world scenario: Cleanup of obsolete methods and pattern updates.
+  - id: 'ef-core-migration'
     package_name: 'Microsoft.EntityFrameworkCore'
-    description: 'Remove obsolete Entity Framework methods when upgrading from 6.x to 7.x'
+    description: 'Update Entity Framework Core patterns and remove obsolete calls'
     version_conditions:
       - type: 'greater_than'
         version: '6.0.0'
     rules:
-      - name: 'Remove Entity.Property() calls'
+      - name: 'Remove obsolete AddDelegatingHandler'
         target_nodes:
           - type: 'InvocationExpression'
-            method_name: 'Property'
-            containing_namespace: 'Microsoft.EntityFrameworkCore'
+            method_name: 'AddDelegatingHandler'
         action:
           type: 'remove_invocation'
           strategy: 'smart_chain_aware'
-      - name: 'Remove obsolete DbContext methods'
+
+      - name: 'Update ConfigureDbContext to AddDbContext'
+        target_nodes:
+          - type: 'InvocationExpression'
+            method_name: 'ConfigureDbContext'
+        action:
+          type: 'replace_invocation'
+          replacement_method: 'AddDbContext'
+
+      - name: 'Remove obsolete EnsureCreated calls'
         target_nodes:
           - type: 'InvocationExpression'
             method_name: 'EnsureCreated'
@@ -23,50 +59,29 @@ migrations:
           type: 'remove_invocation'
           strategy: 'smart_chain_aware'
 
-  - id: 'newtonsoft-method-rename'
+  # 3. Newtonsoft.Json Migration
+  # Real-world scenario: Renaming async methods to match new conventions or custom extensions.
+  - id: 'newtonsoft-migration'
     package_name: 'Newtonsoft.Json'
-    description: 'Rename deprecated JsonConvert methods when upgrading to 13.x'
+    description: 'Update Newtonsoft.Json method names'
     version_conditions:
       - type: 'greater_than_or_equal'
         version: '13.0.0'
     rules:
-      - name: 'Rename SerializeObjectAsync'
+      - name: 'Rename SerializeObjectAsync to SerializeAsync'
         target_nodes:
           - type: 'InvocationExpression'
             method_name: 'SerializeObjectAsync'
             containing_namespace: 'Newtonsoft.Json'
         action:
-          type: 'replace_method_name'
-          new_name: 'SerializeAsync'
-      - name: 'Rename DeserializeObjectAsync'
+          type: 'replace_invocation'
+          replacement_method: 'SerializeAsync'
+      
+      - name: 'Rename DeserializeObjectAsync to DeserializeAsync'
         target_nodes:
           - type: 'InvocationExpression'
             method_name: 'DeserializeObjectAsync'
             containing_namespace: 'Newtonsoft.Json'
         action:
-          type: 'replace_method_name'
-          new_name: 'DeserializeAsync'
-
-  - id: 'system-text-json-migration'
-    package_name: 'System.Text.Json'
-    description: 'Migrate from Newtonsoft.Json to System.Text.Json patterns'
-    version_conditions:
-      - type: 'greater_than_or_equal'
-        version: '6.0.0'
-    rules:
-      - name: 'Replace JsonConvert.SerializeObject'
-        target_nodes:
-          - type: 'InvocationExpression'
-            method_name: 'SerializeObject'
-            containing_type: 'JsonConvert'
-        action:
-          type: 'replace_method_name'
-          new_name: 'JsonSerializer.Serialize'
-      - name: 'Replace JsonConvert.DeserializeObject'
-        target_nodes:
-          - type: 'InvocationExpression'
-            method_name: 'DeserializeObject'
-            containing_type: 'JsonConvert'
-        action:
-          type: 'replace_method_name'
-          new_name: 'JsonSerializer.Deserialize'
+          type: 'replace_invocation'
+          replacement_method: 'DeserializeAsync'
