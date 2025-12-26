@@ -67,7 +67,7 @@ Required packages:
 
 The C# migration tool requires:
 
-- **.NET 9.0 SDK** or higher
+- **.NET 10.0 SDK** or higher
 - **Microsoft.CodeAnalysis.CSharp** NuGet package for AST operations
 
 Build the C# migration tool:
