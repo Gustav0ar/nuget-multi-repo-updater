@@ -101,8 +101,8 @@ The application supports both JSON and YAML configuration formats:
   "gitlab_url": "https://gitlab.company.com",
   "token": "glpat-xxxxxxxxxxxxxxxxxxxx",
   "use_local_clone": false,
-  "enable_code_migration": true,
-  "migration_config_file": "migration-config.yml",
+  "enable_code_migrations": true,
+  "migration_config_file": "package-migrations.yml",
   "use_most_recent_branch": false,
   "branch_filter": "*main*",
   "packages_to_update": [
@@ -133,8 +133,8 @@ The application supports both JSON and YAML configuration formats:
 gitlab_url: 'https://gitlab.company.com'
 token: 'glpat-xxxxxxxxxxxxxxxxxxxx'
 use_local_clone: false
-enable_code_migration: true
-migration_config_file: 'migration-config.yml'
+enable_code_migrations: true
+migration_config_file: 'package-migrations.yml'
 use_most_recent_branch: false
 branch_filter: '*main*'
 
@@ -155,7 +155,7 @@ verify_ssl: true
 allow_downgrade: false
 ```
 
-#### Migration Configuration (`migration-config.yml`)
+#### Migration Configuration (`package-migrations.yml`)
 
 ```yaml
 migrations:
@@ -187,8 +187,8 @@ migrations:
           - type: 'InvocationExpression'
             method_name: 'SerializeObjectAsync'
         action:
-          type: 'replace_method_name'
-          new_name: 'SerializeObjectAsyncNew'
+          type: 'replace_invocation'
+          replacement_method: 'SerializeAsync'
 ```
 
 #### Discovery Configuration (`config-discover.json`)
@@ -198,8 +198,8 @@ migrations:
   "gitlab_url": "https://gitlab.company.com",
   "token": "glpat-xxxxxxxxxxxxxxxxxxxx",
   "use_local_clone": false,
-  "enable_code_migration": true,
-  "migration_config_file": "migration-config.yml",
+  "enable_code_migrations": true,
+  "migration_config_file": "package-migrations.yml",
   "packages_to_update": [
     {
       "name": "Microsoft.EntityFrameworkCore",
@@ -229,8 +229,8 @@ migrations:
 gitlab_url: 'https://gitlab.company.com'
 token: 'glpat-xxxxxxxxxxxxxxxxxxxx'
 use_local_clone: false
-enable_code_migration: true
-migration_config_file: 'migration-config.yml'
+enable_code_migrations: true
+migration_config_file: 'package-migrations.yml'
 use_most_recent_branch: false
 branch_filter: '*main*'
 
@@ -262,7 +262,7 @@ discover:
 python run.py update-nuget --config-file config.json
 ```
 
-With code migration enabled, this will:
+With code migration enabled (via config or `--enable-migrations`), this will:
 
 1. Update package references in .csproj files
 2. Apply configured C# code migrations
@@ -271,9 +271,11 @@ With code migration enabled, this will:
 
 #### Disable Code Migration
 
-```bash
-python run.py update-nuget --config-file config.json \
-  --no-code-migration
+There is no CLI flag to force-disable migrations if they are enabled in the config file. To disable migrations, set `enable_code_migrations: false` (or `migration_settings.enabled: false`) in your config.
+
+```yaml
+# config.yaml
+enable_code_migrations: false
 ```
 
 #### Command Line Package Specification
@@ -315,6 +317,8 @@ python run.py update-nuget --config-file config.json \
   --no-verify-ssl \
   --log-level DEBUG \
   --report-file custom-report.md \
+  --enable-migrations \
+  --strict-migration-mode \
   --migration-config custom-migration-config.yml
 ```
 
@@ -434,8 +438,8 @@ Rename methods to match new API signatures:
     - type: 'InvocationExpression'
       method_name: 'OldMethodName'
   action:
-    type: 'replace_method_name'
-    new_name: 'NewMethodName'
+    type: 'replace_invocation'
+    replacement_method: 'NewMethodName'
 ```
 
 ### Version Conditions
@@ -504,8 +508,9 @@ python tests/run_migration_tests.py --integration
 | `--allow-downgrade`        | Allow package version downgrades                               |
 | `--report-file`            | Output file for update report                                  |
 | `--use-local-clone`        | Use local git cloning mode instead of API mode                 |
-| `--no-code-migration`      | Disable automatic code migration                               |
+| `--enable-migrations`      | Enable automatic code migrations                               |
 | `--migration-config`       | Path to migration configuration file                           |
+| `--strict-migration-mode`  | Roll back everything if migrations fail                        |
 | `--use-most-recent-branch` | Use the most recent branch instead of default branch           |
 | `--branch-filter`          | Wildcard pattern to filter branches (e.g., "_main_", "main\*") |
 
