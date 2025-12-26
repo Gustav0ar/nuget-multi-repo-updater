@@ -25,7 +25,8 @@ class MultiPackageUpdateAction(Action):
     def __init__(self, git_service: GitService, scm_provider: ScmProvider, packages: List[Dict[str, str]],
                  allow_downgrade: bool = False, use_local_clone: bool = False, 
                  migration_config_service: Optional[MigrationConfigurationService] = None,
-                 enable_migrations: bool = False, strict_migration_mode: bool = False):
+                 enable_migrations: bool = False, strict_migration_mode: bool = False,
+                 dry_run: bool = False):
         self.git_service = git_service
         self.scm_provider = scm_provider
         self.packages = packages  # List of {'name': package_name, 'version': new_version, 'migration_rule': optional}
@@ -34,6 +35,7 @@ class MultiPackageUpdateAction(Action):
         self.migration_config_service = migration_config_service
         self.enable_migrations = enable_migrations
         self.strict_migration_mode = strict_migration_mode
+        self.dry_run = dry_run
 
         self.strategy: RepositoryStrategy = self._create_strategy()
 
@@ -99,6 +101,24 @@ class MultiPackageUpdateAction(Action):
                     raise Exception("Migration failed in strict mode")
 
             # Step 6: Push changes and create merge request
+            if self.dry_run:
+                logging.info("Dry run mode: Skipping push and MR creation")
+                
+                # Clear rollback actions to prevent automatic rollback on success
+                transaction.clear_rollback_actions()
+                
+                # Explicitly cleanup if using local clone
+                if self.use_local_clone:
+                    self.strategy.cleanup_repository(repo_id)
+                
+                return {
+                    'dry_run': True,
+                    'package_result': package_result,
+                    'migration_result': migration_result.to_dict() if migration_result else None,
+                    'branch_name': branch_name,
+                    'repo_id': repo_id
+                }
+
             if self.use_local_clone:
                 if not self.strategy.push_changes(branch_name):
                     raise Exception("Failed to push changes to remote")

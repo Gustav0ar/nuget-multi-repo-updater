@@ -101,9 +101,14 @@ class UpdateNugetCommandHandler:
                 repo_copy['target_branch'] = target_branch
                 repositories_with_target_branch.append(repo_copy)
 
-            dry_run_service.simulate_package_updates(
-                repositories_with_target_branch, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
-            )
+            if use_local_clone:
+                dry_run_service.perform_local_dry_run(
+                    repositories_with_target_branch, packages_to_update, args, migration_config_service, enable_migrations
+                )
+            else:
+                dry_run_service.simulate_package_updates(
+                    repositories_with_target_branch, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
+                )
             return
 
         # Execute actual updates with migration support

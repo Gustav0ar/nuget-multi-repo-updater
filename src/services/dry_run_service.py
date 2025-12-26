@@ -56,6 +56,78 @@ class DryRunService:
         if not hasattr(self, '_disable_exit') or not self._disable_exit:
             sys.exit(0)
 
+    def perform_local_dry_run(self, repositories: List[Dict], packages_to_update: List[Dict], 
+                            args: Any, migration_config_service: MigrationConfigurationService,
+                            enable_migrations: bool) -> None:
+        """Perform a dry run by cloning locally and applying changes without pushing."""
+        from src.actions.multi_package_update_action import MultiPackageUpdateAction
+        from src.services.git_service import GitService
+        
+        print(f"\n{'='*80}")
+        print("LOCAL DRY RUN MODE - CLONE & APPLY")
+        print(f"{'='*80}")
+        print(f"The following operations will be performed locally:")
+        print(f"Total repositories to process: {len(repositories)}")
+        print(f"Packages to update: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
+        print()
+
+        git_service = GitService()
+        
+        for repo in repositories:
+            print(f"\n{'-'*60}")
+            print(f"🔍 Processing: {repo['name']} ({repo['path_with_namespace']})")
+            
+            try:
+                action = MultiPackageUpdateAction(
+                    git_service=git_service,
+                    scm_provider=self.scm_provider,
+                    packages=packages_to_update,
+                    allow_downgrade=args.allow_downgrade,
+                    use_local_clone=True,
+                    migration_config_service=migration_config_service,
+                    enable_migrations=enable_migrations,
+                    strict_migration_mode=getattr(args, 'strict_migration_mode', False),
+                    dry_run=True
+                )
+                
+                target_branch = repo.get('target_branch', repo['default_branch'])
+                result = action.execute(repo['ssh_url_to_repo'], str(repo['id']), target_branch)
+                
+                if result:
+                    self._print_local_dry_run_result(result)
+                else:
+                    print("❌ Failed to process repository (check logs)")
+                    
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                logging.error(f"Local dry run failed for {repo['id']}: {e}")
+
+        # Allow tests to disable exit behavior
+        if not hasattr(self, '_disable_exit') or not self._disable_exit:
+            sys.exit(0)
+
+    def _print_local_dry_run_result(self, result: Dict) -> None:
+        """Print the result of a local dry run."""
+        package_result = result.get('package_result', {})
+        migration_result = result.get('migration_result', {})
+        
+        print("\n   ✅ Changes applied successfully (Dry Run)")
+        
+        if package_result.get('updated_packages'):
+            print(f"   📦 Updated Packages ({len(package_result['updated_packages'])}):")
+            for pkg in package_result['updated_packages']:
+                print(f"      - {pkg['name']} to {pkg['version']}")
+        
+        if migration_result and migration_result.get('applied_rules'):
+            print(f"   🛠️  Applied Migration Rules ({len(migration_result['applied_rules'])}):")
+            for rule in migration_result['applied_rules']:
+                print(f"      - {rule}")
+        
+        if package_result.get('modified_files'):
+            print(f"   📝 Modified Files ({len(package_result['modified_files'])}):")
+            for file in package_result['modified_files']:
+                print(f"      - {file}")
+
     def _simulate_repository_processing(self, repo: Dict, packages_to_update: List[Dict],
                                       allow_downgrade: bool, dry_run_report: ReportGenerator,
                                       dry_run_summary: Dict[str, int], use_local_clone: bool = False) -> None:
