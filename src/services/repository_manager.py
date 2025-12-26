@@ -2,6 +2,7 @@
 Repository management utilities for handling different repository input methods.
 """
 import logging
+import os
 from typing import List, Dict, Optional
 
 from src.providers.scm_provider import ScmProvider
@@ -78,13 +79,31 @@ class RepositoryManager:
             logging.info(f"Excluded {len(projects) - len(filtered_projects)} forks, {len(filtered_projects)} repositories remaining")
         return filtered_projects
 
+    def _resolve_repository(self, repo_id: str) -> Optional[Dict]:
+        """Resolve a repository from ID or local path."""
+        # Check if it is a local directory first
+        if os.path.isdir(repo_id):
+            logging.info(f"Found local repository: {repo_id}")
+            return {
+                'id': repo_id,
+                'name': os.path.basename(os.path.abspath(repo_id)),
+                'path_with_namespace': repo_id,
+                'web_url': repo_id,
+                'ssh_url_to_repo': repo_id,
+                'http_url_to_repo': repo_id,
+                'default_branch': 'main',  # Default assumption for local
+                'is_local': True
+            }
+        
+        return self.scm_provider.get_project(repo_id)
+
     def get_repositories_from_command_line(self, repo_list_str: str) -> List[Dict]:
         """Get repositories from command line comma-separated list."""
         repositories = []
         repo_list = [repo.strip() for repo in repo_list_str.split(',') if repo.strip()]
         
         for repo_id in repo_list:
-            project = self.scm_provider.get_project(repo_id)
+            project = self._resolve_repository(repo_id)
             if project:
                 repositories.append(project)
             else:
@@ -98,7 +117,7 @@ class RepositoryManager:
         repo_list = self.load_repositories_from_file(file_path)
         
         for repo_id in repo_list:
-            project = self.scm_provider.get_project(repo_id)
+            project = self._resolve_repository(repo_id)
             if project:
                 repositories.append(project)
             else:

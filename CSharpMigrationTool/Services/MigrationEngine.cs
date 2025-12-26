@@ -231,9 +231,6 @@ public class MigrationEngine
         // If semantic analysis succeeded, use it
         if (methodSymbol != null)
         {
-            // Debug output to stderr to avoid interfering with JSON output
-            Console.Error.WriteLine($"Semantic: Method: {methodSymbol.Name}, Type: {methodSymbol.ContainingType.Name}, Namespace: {methodSymbol.ContainingNamespace.ToDisplayString()}");
-
             // For extension methods, the symbol needs to be reduced
             if (methodSymbol.IsExtensionMethod)
             {
@@ -262,7 +259,6 @@ public class MigrationEngine
         }
 
         // Fall back to syntax-based matching
-        Console.Error.WriteLine("Falling back to syntax-based matching");
         return IsMatchingInvocationSyntaxBased(invocation, targetNode);
     }
 
@@ -279,8 +275,6 @@ public class MigrationEngine
         {
             methodName = identifier.Identifier.ValueText;
         }
-
-        Console.Error.WriteLine($"Syntax: Method name: {methodName}");
 
         // Match method name
         if (!string.IsNullOrEmpty(targetNode.MethodName))
@@ -299,17 +293,27 @@ public class MigrationEngine
 
     private (SyntaxNode, bool) ApplyRemoveInvocation(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action, string filePath, MigrationResult result)
     {
-        var newRoot = root;
+        // Track the nodes so we can find them in the modified tree
+        var currentRoot = root.TrackNodes(invocations);
         var hasChanges = false;
 
         foreach (var invocation in invocations)
         {
             try
             {
-                var (updatedRoot, changed) = RemoveInvocationSmartly(newRoot, invocation, action);
+                // Find the current version of the invocation in the modified tree
+                var currentInvocation = currentRoot.GetCurrentNode(invocation);
+                
+                // If the node is gone (e.g. removed as part of a previous removal), skip it
+                if (currentInvocation == null)
+                {
+                    continue;
+                }
+
+                var (updatedRoot, changed) = RemoveInvocationSmartly(currentRoot, currentInvocation, action);
                 if (changed)
                 {
-                    newRoot = updatedRoot;
+                    currentRoot = updatedRoot;
                     hasChanges = true;
                 }
             }
@@ -320,7 +324,7 @@ public class MigrationEngine
             }
         }
 
-        return (newRoot, hasChanges);
+        return (currentRoot, hasChanges);
     }
 
     private (SyntaxNode, bool) RemoveInvocationSmartly(SyntaxNode root, InvocationExpressionSyntax invocation, MigrationAction action)
@@ -337,10 +341,11 @@ public class MigrationEngine
         {
             // This invocation is part of a chain: someObject.ThisMethod().NextMethod()
             // We need to replace the entire member access with just the next part
-            var grandParent = memberAccess.Parent;
-            if (grandParent != null)
+            
+            if (invocation.Expression is MemberAccessExpressionSyntax mae)
             {
-                return (root.ReplaceNode(memberAccess, invocation.Expression), true);
+                var newMemberAccess = memberAccess.WithExpression(mae.Expression);
+                return (root.ReplaceNode(memberAccess, newMemberAccess), true);
             }
         }
         else if (invocation.Expression is MemberAccessExpressionSyntax chainedAccess)
@@ -358,15 +363,23 @@ public class MigrationEngine
         if (string.IsNullOrEmpty(action.ReplacementMethod))
             return (root, false);
 
-        var newRoot = root;
+        // Track the nodes so we can find them in the modified tree
+        var currentRoot = root.TrackNodes(invocations);
         var hasChanges = false;
 
         foreach (var invocation in invocations)
         {
             try
             {
-                var newInvocation = ReplaceMethodName(invocation, action.ReplacementMethod);
-                newRoot = newRoot.ReplaceNode(invocation, newInvocation);
+                // Find the current version of the invocation in the modified tree
+                var currentInvocation = currentRoot.GetCurrentNode(invocation);
+                
+                // If the node is gone, skip it
+                if (currentInvocation == null)
+                    continue;
+
+                var newInvocation = ReplaceMethodName(currentInvocation, action.ReplacementMethod);
+                currentRoot = currentRoot.ReplaceNode(currentInvocation, newInvocation);
                 hasChanges = true;
             }
             catch (Exception ex)
@@ -376,7 +389,7 @@ public class MigrationEngine
             }
         }
 
-        return (newRoot, hasChanges);
+        return (currentRoot, hasChanges);
     }
 
     private InvocationExpressionSyntax ReplaceMethodName(InvocationExpressionSyntax invocation, string newMethodName)

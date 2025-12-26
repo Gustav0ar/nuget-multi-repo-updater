@@ -2,6 +2,7 @@ import git
 import logging
 import tempfile
 import shutil
+import os
 from git import Repo
 from typing import Optional
 
@@ -11,6 +12,7 @@ class GitService:
 
     def __init__(self, base_dir: str = "./temp"):
         self.base_dir = base_dir
+        os.makedirs(self.base_dir, exist_ok=True)
         self.local_path = None
         self.repo = None
         self.original_branch = None
