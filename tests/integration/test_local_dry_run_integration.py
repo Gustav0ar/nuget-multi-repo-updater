@@ -66,6 +66,7 @@ class TestLocalDryRunIntegration:
         
         # Assertions
         assert "LOCAL DRY RUN MODE - CLONE & APPLY" in output
+        assert "Code migration: Disabled" in output
         assert "Changes applied successfully (Dry Run)" in output
         assert "Newtonsoft.Json to 13.0.1" in output
         
@@ -139,6 +140,8 @@ public class Program {
             captured = capsys.readouterr()
             output = captured.out
             
+            assert "Code migration: Enabled" in output
             assert "Applied Migration Rules (1)" in output
             assert "Rename SerializeObjectAsync" in output
             assert "Modified Files" in output
+            assert "Program.cs" in output

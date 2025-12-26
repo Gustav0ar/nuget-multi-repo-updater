@@ -69,6 +69,10 @@ class DryRunService:
         print(f"The following operations will be performed locally:")
         print(f"Total repositories to process: {len(repositories)}")
         print(f"Packages to update: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
+        if enable_migrations:
+            print(f"Code migration: Enabled")
+        else:
+            print(f"Code migration: Disabled")
         print()
 
         git_service = GitService()
@@ -123,9 +127,14 @@ class DryRunService:
             for rule in migration_result['applied_rules']:
                 print(f"      - {rule}")
         
-        if package_result.get('modified_files'):
-            print(f"   📝 Modified Files ({len(package_result['modified_files'])}):")
-            for file in package_result['modified_files']:
+        # Combine modified files from both package updates and migrations
+        modified_files = set(package_result.get('modified_files', []) or [])
+        if migration_result:
+            modified_files.update(migration_result.get('modified_files', []) or [])
+            
+        if modified_files:
+            print(f"   📝 Modified Files ({len(modified_files)}):")
+            for file in sorted(modified_files):
                 print(f"      - {file}")
 
     def _simulate_repository_processing(self, repo: Dict, packages_to_update: List[Dict],
