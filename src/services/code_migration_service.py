@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import os
 import platform
+import time
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,13 +71,62 @@ class CodeMigrationService:
                 bin_dir / base_name
             ]
         else:
-            # Unix-like systems: prioritize no extension, then .dll
+            # Unix-like systems: prioritize .dll (runs via dotnet), then no extension
             candidates = [
-                bin_dir / base_name,
-                bin_dir / f'{base_name}.dll'
+                bin_dir / f'{base_name}.dll',
+                bin_dir / base_name
             ]
 
         return candidates
+
+    def _is_tool_outdated(self, tool_dir: Path, executable_path: Path) -> bool:
+        """Return True if the tool binary is older than its sources.
+
+        This prevents using stale binaries that can apply old/buggy transformations.
+        """
+        try:
+            if not executable_path.exists():
+                return True
+
+            exe_mtime = executable_path.stat().st_mtime
+
+            # Consider csproj + key source files. (Cheap and sufficient for this repo.)
+            inputs = []
+            inputs.extend(tool_dir.glob('*.csproj'))
+            inputs.append(tool_dir / 'Program.cs')
+            inputs.append(tool_dir / 'Services' / 'MigrationEngine.cs')
+            inputs.append(tool_dir / 'Models' / 'MigrationModels.cs')
+
+            for path in inputs:
+                if path.exists() and path.stat().st_mtime > exe_mtime:
+                    return True
+
+            return False
+        except Exception:
+            # If we can't tell, err on the safe side and rebuild.
+            return True
+
+    def _verify_executable_works(self, executable_path: Path) -> bool:
+        """Quickly verify the discovered executable can run on this machine."""
+        try:
+            if not executable_path.exists():
+                return False
+
+            if str(executable_path).endswith('.dll'):
+                cmd = ['dotnet', self._normalize_path_for_subprocess(str(executable_path)), '--help']
+            else:
+                cmd = [self._normalize_path_for_subprocess(str(executable_path)), '--help']
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            return result.returncode == 0 and 'C# Code Migration Tool' in (result.stdout or '')
+        except Exception:
+            return False
 
     def _get_executable_path(self) -> Optional[str]:
         """Get the path to the executable, building if necessary."""
@@ -118,6 +168,18 @@ class CodeMigrationService:
                 
                 for exe_path in candidates:
                     if exe_path.exists():
+                        # If the binary is older than sources, rebuild and re-discover.
+                        if self._is_tool_outdated(tool_dir, exe_path):
+                            logging.info("C# tool binary is outdated; rebuilding...")
+                            self._cached_executable_path = None
+                            rebuilt = self._build_tool_if_needed(tool_dir)
+                            if rebuilt:
+                                return rebuilt
+
+                        # Verify the executable actually runs (handles missing runtime / bad pick)
+                        if not self._verify_executable_works(exe_path):
+                            continue
+
                         self._cached_executable_path = self._normalize_path_for_subprocess(str(exe_path))
                         logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
                         return self._cached_executable_path
