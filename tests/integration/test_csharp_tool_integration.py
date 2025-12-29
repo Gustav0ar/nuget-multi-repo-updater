@@ -41,19 +41,31 @@ class TestCSharpMigrationTool:
         if not tool_dir.exists():
             return None
             
-        # Check for built executable in .NET 9.0 (current) or .NET 7.0 (fallback)
-        for target_framework in ['net9.0', 'net7.0']:
-            bin_dir = tool_dir / 'bin' / 'Debug' / target_framework
-            exe_path = bin_dir / 'CSharpMigrationTool'  # Linux executable
-            exe_path_win = bin_dir / 'CSharpMigrationTool.exe'  # Windows executable
-            dll_path = bin_dir / 'CSharpMigrationTool.dll'
-            
-            if exe_path.exists():
-                return str(exe_path)
-            elif exe_path_win.exists():
-                return str(exe_path_win)
-            elif dll_path.exists():
-                return str(dll_path)
+        # Discover built executable for the newest target framework under bin/Debug
+        bin_debug_dir = tool_dir / 'bin' / 'Debug'
+
+        def parse_net_version(dirname: str):
+            try:
+                version_str = dirname.replace('net', '', 1) if dirname.startswith('net') else dirname
+                return tuple(int(x) for x in version_str.split('.'))
+            except Exception:
+                return (0, 0)
+
+        if bin_debug_dir.exists():
+            target_framework_dirs = [d for d in bin_debug_dir.iterdir() if d.is_dir() and d.name.startswith('net')]
+            target_framework_dirs.sort(key=lambda d: parse_net_version(d.name), reverse=True)
+
+            for bin_dir in target_framework_dirs:
+                exe_path = bin_dir / 'CSharpMigrationTool'  # Linux/macOS executable
+                exe_path_win = bin_dir / 'CSharpMigrationTool.exe'  # Windows executable
+                dll_path = bin_dir / 'CSharpMigrationTool.dll'
+
+                if exe_path.exists():
+                    return str(exe_path)
+                if exe_path_win.exists():
+                    return str(exe_path_win)
+                if dll_path.exists():
+                    return str(dll_path)
         
         # If no built binary found, try to build the tool
         return self._build_tool_if_needed(tool_dir)
@@ -94,18 +106,30 @@ class TestCSharpMigrationTool:
             print("C# migration tool built successfully")
             
             # Now check again for the built executable
-            for target_framework in ['net9.0', 'net7.0']:
-                bin_dir = tool_dir / 'bin' / 'Debug' / target_framework
-                exe_path = bin_dir / 'CSharpMigrationTool'
-                exe_path_win = bin_dir / 'CSharpMigrationTool.exe'
-                dll_path = bin_dir / 'CSharpMigrationTool.dll'
-                
-                if exe_path.exists():
-                    return str(exe_path)
-                elif exe_path_win.exists():
-                    return str(exe_path_win)
-                elif dll_path.exists():
-                    return str(dll_path)
+            bin_debug_dir = tool_dir / 'bin' / 'Debug'
+
+            def parse_net_version(dirname: str):
+                try:
+                    version_str = dirname.replace('net', '', 1) if dirname.startswith('net') else dirname
+                    return tuple(int(x) for x in version_str.split('.'))
+                except Exception:
+                    return (0, 0)
+
+            if bin_debug_dir.exists():
+                target_framework_dirs = [d for d in bin_debug_dir.iterdir() if d.is_dir() and d.name.startswith('net')]
+                target_framework_dirs.sort(key=lambda d: parse_net_version(d.name), reverse=True)
+
+                for bin_dir in target_framework_dirs:
+                    exe_path = bin_dir / 'CSharpMigrationTool'
+                    exe_path_win = bin_dir / 'CSharpMigrationTool.exe'
+                    dll_path = bin_dir / 'CSharpMigrationTool.dll'
+
+                    if exe_path.exists():
+                        return str(exe_path)
+                    if exe_path_win.exists():
+                        return str(exe_path_win)
+                    if dll_path.exists():
+                        return str(dll_path)
             
             print("Warning: Built C# migration tool, but executable not found in expected location")
             return None
@@ -239,6 +263,86 @@ namespace TestProject
             json.dump(rules_content, f, indent=2)
             
         return rules_file
+
+    def test_remove_invocation_does_not_remove_following_chain_calls(self):
+        """Regression: removing a fluent call must not remove subsequent calls."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'FluentChain.cs')
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public static class FluentExtensions
+    {
+        public static Builder AddHttpClient(this object services) => new Builder();
+        public static Builder SomeConfig(this Builder builder) => builder;
+        public static Builder AddAnalyzerDelegatingHandler(this Builder builder) => builder;
+        public static Builder AddStandardResilienceHandler(this Builder builder) => builder;
+    }
+
+    public sealed class Builder { }
+
+    public sealed class Test
+    {
+        public void Configure(object services)
+        {
+            services.AddHttpClient()
+                  .SomeConfig()
+                  .AddAnalyzerDelegatingHandler()
+                  .AddStandardResilienceHandler();
+
+            var x = services.AddHttpClient()
+                            .SomeConfig()
+                            .AddAnalyzerDelegatingHandler()
+                            .AddStandardResilienceHandler();
+
+            _ = services.AddHttpClient()
+                        .SomeConfig()
+                        .AddAnalyzerDelegatingHandler()
+                        .AddStandardResilienceHandler();
+        }
+    }
+}
+'''
+
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+
+        rules = [
+            {
+                'name': 'Remove obsolete AddAnalyzerDelegatingHandler',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'AddAnalyzerDelegatingHandler'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_invocation',
+                    'strategy': 'smart_chain_aware'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, f"Tool failed: {result.stderr}\n{result.stdout}"
+
+        with open(cs_file, 'r') as f:
+            migrated = f.read()
+
+        # Only invocations should be removed; the extension method declaration should remain.
+        assert '.AddAnalyzerDelegatingHandler(' not in migrated
+        assert migrated.count('.AddStandardResilienceHandler(') == 3
         
     def test_remove_invocation_rule(self):
         """Test removing method invocations."""

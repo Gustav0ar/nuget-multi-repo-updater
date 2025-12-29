@@ -188,6 +188,20 @@ public class MigrationEngine
             .Where(inv => IsMatchingInvocation(inv, targetNode, semanticModel))
             .ToList();
 
+        // Safety: if method_name is specified, enforce it via syntax too.
+        // This prevents accidental removals if semantic binding yields unexpected candidates.
+        if (!string.IsNullOrWhiteSpace(targetNode.MethodName))
+        {
+            invocations = invocations
+                .Where(inv =>
+                {
+                    var invokedName = TryGetInvokedMethodName(inv);
+                    return invokedName != null &&
+                           string.Equals(invokedName, targetNode.MethodName, StringComparison.OrdinalIgnoreCase);
+                })
+                .ToList();
+        }
+
         if (!invocations.Any())
             return (root, false);
 
@@ -209,6 +223,16 @@ public class MigrationEngine
             }
             return (root, false);
         }
+    }
+
+    private static string? TryGetInvokedMethodName(InvocationExpressionSyntax invocation)
+    {
+        return invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.ValueText,
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            _ => null
+        };
     }
 
     private bool IsMatchingInvocation(InvocationExpressionSyntax invocation, TargetNode targetNode, SemanticModel semanticModel)
