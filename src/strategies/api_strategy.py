@@ -124,7 +124,8 @@ class ApiStrategy(RepositoryStrategy):
                     content = self.scm_provider.get_file_content(repo_id, file_path, ref=branch_name)
                     if content:
                         local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
-                        with open(local_file_path, 'w', encoding='utf-8') as f:
+                        # newline='' disables platform newline translation (critical on Windows)
+                        with open(local_file_path, 'w', encoding='utf-8', newline='') as f:
                             f.write(content)
                         local_files.append(local_file_path)
                 

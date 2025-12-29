@@ -29,6 +29,8 @@ class PackageFileUpdater:
         modified = False
         old_version_str = None
 
+        newline = "\r\n" if "\r\n" in file_content else "\n"
+
         # Check for single-line format first
         match = re.search(pattern, updated_content, re.IGNORECASE)
         if match:
@@ -49,7 +51,11 @@ class PackageFileUpdater:
                 if not self._should_update_version(old_version_str, allow_downgrade):
                     return file_content, False
 
-                multiline_replacement = f'<PackageReference Include="{self.package_name}">\n      <Version>{self.new_version}</Version>\n    </PackageReference>'
+                multiline_replacement = (
+                    f'<PackageReference Include="{self.package_name}">{newline}'
+                    f'      <Version>{self.new_version}</Version>{newline}'
+                    f'    </PackageReference>'
+                )
                 updated_content = re.sub(multiline_pattern, multiline_replacement, updated_content, flags=re.IGNORECASE | re.DOTALL)
                 modified = True
 

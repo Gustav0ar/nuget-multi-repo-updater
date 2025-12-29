@@ -45,7 +45,7 @@ class LocalCloneStrategy(RepositoryStrategy):
     def get_file_content(self, repo_id: str, file_path: str, default_branch: str) -> Optional[str]:
         """Get the content of a file from the local repository."""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8', newline='') as f:
                 return f.read()
         except Exception as e:
             logging.error(f"Failed to read file {file_path}: {e}")
@@ -78,7 +78,7 @@ class LocalCloneStrategy(RepositoryStrategy):
         
         if file_existed:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, 'r', encoding='utf-8', newline='') as f:
                     original_content = f.read()
             except Exception as e:
                 logging.warning(f"Could not read original content of {file_path}: {e}")
@@ -87,7 +87,8 @@ class LocalCloneStrategy(RepositoryStrategy):
             # Ensure directory exists
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             
-            with open(file_path, 'w', encoding='utf-8') as f:
+            # newline='' disables platform newline translation (critical on Windows)
+            with open(file_path, 'w', encoding='utf-8', newline='') as f:
                 f.write(content)
                 
             # Register file revert rollback
@@ -239,7 +240,7 @@ class LocalCloneStrategy(RepositoryStrategy):
     def _revert_file_change(self, file_path: str, original_content: str):
         """Rollback: Revert file to original content."""
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, 'w', encoding='utf-8', newline='') as f:
                 f.write(original_content)
             logging.info(f"Rollback: Reverted file {file_path}")
         except Exception as e:

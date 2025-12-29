@@ -70,6 +70,44 @@ class TestPackageFileUpdater:
         assert was_modified
         assert '7.0.0' in updated_content
         assert '6.0.0' not in updated_content
+
+    def test_update_package_version_multiline_preserves_crlf(self):
+        """Multiline csproj updates must preserve CRLF if present."""
+        content = (
+            '<Project>\r\n'
+            '  <ItemGroup>\r\n'
+            '    <PackageReference Include="Microsoft.EntityFrameworkCore">\r\n'
+            '      <Version>6.0.0</Version>\r\n'
+            '    </PackageReference>\r\n'
+            '  </ItemGroup>\r\n'
+            '</Project>\r\n'
+        )
+
+        updater = PackageFileUpdater('Microsoft.EntityFrameworkCore', '7.0.0')
+        updated_content, was_modified = updater.update_csproj_package_version(content, False)
+
+        assert was_modified
+        assert '\r\n' in updated_content
+        assert '\n' not in updated_content.replace('\r\n', '')
+
+    def test_update_package_version_multiline_preserves_lf(self):
+        """Multiline csproj updates must preserve LF when CRLF is absent."""
+        content = (
+            '<Project>\n'
+            '  <ItemGroup>\n'
+            '    <PackageReference Include="Microsoft.EntityFrameworkCore">\n'
+            '      <Version>6.0.0</Version>\n'
+            '    </PackageReference>\n'
+            '  </ItemGroup>\n'
+            '</Project>\n'
+        )
+
+        updater = PackageFileUpdater('Microsoft.EntityFrameworkCore', '7.0.0')
+        updated_content, was_modified = updater.update_csproj_package_version(content, False)
+
+        assert was_modified
+        assert '\r\n' not in updated_content
+        assert '\n' in updated_content
     
     def test_downgrade_prevention(self):
         """Test that downgrades are prevented when not allowed."""
