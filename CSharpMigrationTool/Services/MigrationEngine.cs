@@ -358,6 +358,13 @@ public class MigrationEngine
                 var newMemberAccess = memberAccess.WithExpression(mae.Expression);
                 return (root.ReplaceNode(memberAccess, newMemberAccess), true);
             }
+            else if (invocation.Expression is NameSyntax)
+            {
+                // Case: Method().Next() -> Next()
+                // Replace the member access (Method().Next) with just the name (Next)
+                // This effectively removes the Method() call and makes Next() the primary invocation
+                return (root.ReplaceNode(memberAccess, memberAccess.Name), true);
+            }
         }
         else if (invocation.Expression is MemberAccessExpressionSyntax chainedAccess)
         {
