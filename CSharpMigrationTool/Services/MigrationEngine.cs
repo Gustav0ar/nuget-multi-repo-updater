@@ -123,15 +123,20 @@ public class MigrationEngine
         {
             var modifiedCode = newRoot.ToFullString();
 
-            // Preserve original line endings
-            if (!useCrlf)
-            {
-                modifiedCode = modifiedCode.Replace("\r\n", "\n");
-            }
+            // Preserve original line endings (CRLF vs LF) regardless of what Roslyn produced.
+            // Normalize to LF first, then re-apply the original newline if needed.
+            modifiedCode = NormalizeNewlines(modifiedCode, useCrlf ? "\r\n" : "\n");
 
             await File.WriteAllTextAsync(filePath, modifiedCode);
             result.AddModifiedFile(filePath);
         }
+    }
+
+    private static string NormalizeNewlines(string text, string newline)
+    {
+        // Canonicalize to LF first (handles CRLF and lone CR), then optionally expand to CRLF.
+        var normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        return newline == "\r\n" ? normalized.Replace("\n", "\r\n") : normalized;
     }
 
     private (SyntaxNode, bool) ApplyRule(SyntaxNode root, MigrationRule rule, string filePath, MigrationResult result, SemanticModel semanticModel)

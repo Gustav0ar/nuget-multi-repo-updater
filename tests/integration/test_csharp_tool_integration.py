@@ -343,6 +343,78 @@ namespace TestProject
         # Only invocations should be removed; the extension method declaration should remain.
         assert '.AddAnalyzerDelegatingHandler(' not in migrated
         assert migrated.count('.AddStandardResilienceHandler(') == 3
+
+    def test_migration_preserves_crlf_line_endings(self):
+        """Regression: modified files must preserve original CRLF vs LF line endings."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'CrlfPreservation.cs')
+
+        cs_content = (
+            'using System;\r\n'
+            '\r\n'
+            'namespace TestProject\r\n'
+            '{\r\n'
+            '    public static class FluentExtensions\r\n'
+            '    {\r\n'
+            '        public static Builder AddHttpClient(this object services) => new Builder();\r\n'
+            '        public static Builder SomeConfig(this Builder builder) => builder;\r\n'
+            '        public static Builder AddAnalyzerDelegatingHandler(this Builder builder) => builder;\r\n'
+            '        public static Builder AddStandardResilienceHandler(this Builder builder) => builder;\r\n'
+            '    }\r\n'
+            '\r\n'
+            '    public sealed class Builder { }\r\n'
+            '\r\n'
+            '    public sealed class Test\r\n'
+            '    {\r\n'
+            '        public void Configure(object services)\r\n'
+            '        {\r\n'
+            '            _ = services.AddHttpClient()\r\n'
+            '                        .SomeConfig()\r\n'
+            '                        .AddAnalyzerDelegatingHandler()\r\n'
+            '                        .AddStandardResilienceHandler();\r\n'
+            '        }\r\n'
+            '    }\r\n'
+            '}\r\n'
+        )
+
+        # Write bytes explicitly so the file is CRLF even on non-Windows.
+        Path(cs_file).write_bytes(cs_content.encode('utf-8'))
+
+        rules = [
+            {
+                'name': 'Remove AddAnalyzerDelegatingHandler',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'AddAnalyzerDelegatingHandler'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_invocation',
+                    'strategy': 'smart_chain_aware'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, f"Tool failed: {result.stderr}\n{result.stdout}"
+
+        migrated_bytes = Path(cs_file).read_bytes()
+        assert b'\r\n' in migrated_bytes
+        assert b'\n' not in migrated_bytes.replace(b'\r\n', b'')
+
+        migrated_text = migrated_bytes.decode('utf-8')
+        assert '.AddAnalyzerDelegatingHandler(' not in migrated_text
         
     def test_remove_invocation_rule(self):
         """Test removing method invocations."""
