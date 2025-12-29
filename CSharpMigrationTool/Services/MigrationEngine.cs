@@ -45,6 +45,10 @@ public class MigrationEngine
     private async Task ProcessFileAsync(string filePath, List<MigrationRule> rules, MigrationResult result)
     {
         var sourceCode = await File.ReadAllTextAsync(filePath);
+        
+        // Detect line endings to preserve them
+        var useCrlf = sourceCode.Contains("\r\n");
+
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, path: filePath);
         
         // Create compilation with more comprehensive references
@@ -118,6 +122,13 @@ public class MigrationEngine
         if (modified)
         {
             var modifiedCode = newRoot.ToFullString();
+
+            // Preserve original line endings
+            if (!useCrlf)
+            {
+                modifiedCode = modifiedCode.Replace("\r\n", "\n");
+            }
+
             await File.WriteAllTextAsync(filePath, modifiedCode);
             result.AddModifiedFile(filePath);
         }
