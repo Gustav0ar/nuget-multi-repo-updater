@@ -36,7 +36,17 @@ class DryRunCodeMigrationService:
     """Service for analyzing potential C# code migrations without making changes."""
     
     def __init__(self, csharp_tool_path: str):
-        self.csharp_tool_path = csharp_tool_path
+        try:
+            from pathlib import Path
+            resolved = Path(csharp_tool_path).expanduser().resolve(strict=False)
+        except Exception:
+            resolved = csharp_tool_path
+        self.csharp_tool_path = str(resolved)
+
+    def _get_tool_dir(self) -> str:
+        from pathlib import Path
+        tool_path = Path(self.csharp_tool_path)
+        return str(tool_path.parent if tool_path.suffix.lower() == '.csproj' else tool_path)
         
     def analyze_potential_migrations(self, target_files: List[str], 
                                    migration_rules: List[Dict[str, Any]], 
@@ -90,7 +100,8 @@ class DryRunCodeMigrationService:
                 ['dotnet', 'run', '--project', self.csharp_tool_path, '--', '--help'],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                cwd=self._get_tool_dir()
             )
             
             return result.returncode == 0
@@ -135,7 +146,7 @@ class DryRunCodeMigrationService:
                     capture_output=True,
                     text=True,
                     timeout=120,  # 2 minute timeout for analysis
-                    cwd=working_directory
+                    cwd=self._get_tool_dir()
                 )
                 
                 # If dry-run flag is not supported, run normal mode and analyze output

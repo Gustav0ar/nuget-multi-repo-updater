@@ -118,7 +118,7 @@ class ApiStrategy(RepositoryStrategy):
         def prefilter_remote_files(files: List[str], rules: List[dict]) -> List[str]:
             """Try to reduce the file set using the provider's code search, if available."""
             try:
-                migration_service = CodeMigrationService("./CSharpMigrationTool")
+                migration_service = CodeMigrationService(os.path.abspath("CSharpMigrationTool"))
                 terms = migration_service.extract_search_terms(rules)
                 if not terms:
                     return files
@@ -179,7 +179,7 @@ class ApiStrategy(RepositoryStrategy):
                         local_to_remote[local_file_path] = file_path
                 
                 # Execute migration tool
-                migration_service = CodeMigrationService("./CSharpMigrationTool")
+                migration_service = CodeMigrationService(os.path.abspath("CSharpMigrationTool"))
                 result = migration_service.execute_migrations(local_files, rules, temp_dir)
 
                 # If migrations succeeded, upload modified files back to the repository while temp_dir exists.

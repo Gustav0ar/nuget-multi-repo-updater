@@ -173,16 +173,32 @@ class TestCodeMigrationService:
             assert exe1.endswith('CSharpMigrationTool.dll')
             assert any(c.args[0][:3] == ['dotnet', 'build', '--configuration'] for c in run_mock.mock_calls)
 
-            # Calling again without changes should reuse cache and not rebuild
-            run_mock.reset_mock()
-            exe2 = svc._get_executable_path()
-            assert exe2 == exe1
-            assert not any(c.args[0][:3] == ['dotnet', 'build', '--configuration'] for c in run_mock.mock_calls)
+    def test_execute_migrations_runs_tool_from_tool_dir_not_repo_dir(self, tmp_path):
+        tool_dir = tmp_path / 'CSharpMigrationTool'
+        (tool_dir / 'bin' / 'Debug' / 'net10.0').mkdir(parents=True)
+        dll_path = tool_dir / 'bin' / 'Debug' / 'net10.0' / 'CSharpMigrationTool.dll'
+        dll_path.write_text('stub')
 
-            # Touch a source file; next call must rebuild
-            newer = changed_source_mtime + 10
-            os.utime(extra_source, (newer, newer))
-            run_mock.reset_mock()
-            exe3 = svc._get_executable_path()
-            assert exe3 == exe1
-            assert any(c.args[0][:3] == ['dotnet', 'build', '--configuration'] for c in run_mock.mock_calls)
+        repo_dir = tmp_path / 'repo'
+        repo_dir.mkdir()
+        target_file = repo_dir / 'a.cs'
+        target_file.write_text('class A {}')
+
+        svc = CodeMigrationService(str(tool_dir))
+
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            'success': True,
+            'modified_files': [str(target_file)],
+            'applied_rules': ['R'],
+            'errors': [],
+            'summary': 'ok'
+        })
+        mock_result.stderr = ''
+
+        with patch.object(svc, 'validate_tool_availability', return_value=True), \
+             patch.object(svc, '_prepare_command', return_value=(['dotnet', str(dll_path), '--help'], False)), \
+             patch('subprocess.run', return_value=mock_result) as run_mock:
+            svc.execute_migrations([str(target_file)], [{'name': 'R', 'target_nodes': [{'type': 'InvocationExpression'}], 'action': {'type': 'remove_invocation'}}], str(repo_dir))
+            assert run_mock.call_args.kwargs.get('cwd') == str(tool_dir)

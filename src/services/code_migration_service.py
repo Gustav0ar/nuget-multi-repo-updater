@@ -38,9 +38,23 @@ class CodeMigrationService:
     """Service for executing C# code migrations using external tool."""
     
     def __init__(self, csharp_tool_path: str):
-        self.csharp_tool_path = csharp_tool_path
+        # Normalize to an absolute path so the tool can be executed from any cwd
+        # (API mode uses a temporary working directory).
+        try:
+            resolved = Path(csharp_tool_path).expanduser().resolve(strict=False)
+        except Exception:
+            resolved = Path(csharp_tool_path).expanduser()
+        self.csharp_tool_path = str(resolved)
         self._cached_executable_path: Optional[str] = None
         self._cached_executable_mtime: Optional[float] = None
+
+    def _get_tool_dir(self) -> Path:
+        """Return the directory that contains the C# tool project."""
+        tool_path = Path(self.csharp_tool_path)
+        # `dotnet run --project` accepts either a directory or a csproj path.
+        if tool_path.suffix.lower() == '.csproj':
+            return tool_path.parent
+        return tool_path
         
     def _normalize_path_for_subprocess(self, path: str) -> str:
         """Normalize path for subprocess compatibility across platforms."""
@@ -140,8 +154,7 @@ class CodeMigrationService:
 
     def _get_executable_path(self) -> Optional[str]:
         """Get the path to the executable, building if necessary."""
-        tool_path = Path(self.csharp_tool_path)
-        tool_dir = tool_path.parent if tool_path.is_file() else tool_path
+        tool_dir = self._get_tool_dir()
 
         # Return cached path if we already found it, but only if still up-to-date.
         if self._cached_executable_path:
@@ -606,6 +619,10 @@ class CodeMigrationService:
                 try:
                     cmd, use_dotnet_run = self._prepare_command(rules_file_path, batch, working_directory)
 
+                    # Always run the tool from its own directory so relative `--project` paths
+                    # and framework resolution work even when `working_directory` is a temp dir.
+                    tool_cwd = str(self._get_tool_dir())
+
                     if use_dotnet_run:
                         logging.info(f"Using 'dotnet run' for {len(batch)} files")
                     else:
@@ -616,7 +633,7 @@ class CodeMigrationService:
                         capture_output=True,
                         text=True,
                         timeout=300,
-                        cwd=working_directory
+                        cwd=tool_cwd
                     )
 
                     if result.returncode == 0:
