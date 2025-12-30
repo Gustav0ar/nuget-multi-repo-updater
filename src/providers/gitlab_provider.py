@@ -392,6 +392,18 @@ class GitLabProvider(ScmProvider):
             logging.error(f"Failed to get merge request {mr_iid} from project {project_id}: {e}")
             return None
 
+    def close_merge_request(self, project_id: str, mr_iid: str) -> bool:
+        """Close a merge request (used for rollback support)."""
+        encoded_project_id = quote(str(project_id), safe='')
+        url = f"{self.gitlab_url}/api/v4/projects/{encoded_project_id}/merge_requests/{mr_iid}"
+
+        try:
+            response = self._make_request('put', url, data={'state_event': 'close'})
+            return response.status_code in (200, 201)
+        except (requests.RequestException, RateLimitExceeded) as e:
+            logging.error(f"Failed to close merge request {mr_iid} in project {project_id}: {e}")
+            return False
+
     def discover_repositories(self, group_id: str = None, owned: bool = None,
                               membership: bool = None, archived: bool = False) -> List[Dict]:
         """Get all repositories the user has access to, with optional filtering."""

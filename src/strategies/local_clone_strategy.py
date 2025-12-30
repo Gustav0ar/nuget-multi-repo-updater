@@ -125,7 +125,15 @@ class LocalCloneStrategy(RepositoryStrategy):
     def create_merge_request(self, repo_id: str, source_branch: str, target_branch: str,
                            title: str, description: str) -> Optional[Dict]:
         """Create a merge request using the SCM provider."""
-        return self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
+        mr = self.scm_provider.create_merge_request(repo_id, source_branch, target_branch, title, description)
+        if mr and self.transaction:
+            mr_iid = mr.get('iid') or mr.get('id')
+            if mr_iid is not None:
+                self.transaction.add_rollback_action(
+                    lambda: self.scm_provider.close_merge_request(repo_id, str(mr_iid)),
+                    f"Close merge request {mr_iid}"
+                )
+        return mr
 
     def cleanup_branch(self, repo_id: str, branch_name: str, default_branch: str) -> bool:
         """Clean up branch - for local strategy, delete local and remote branch."""

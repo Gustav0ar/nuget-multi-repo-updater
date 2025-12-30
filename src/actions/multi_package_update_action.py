@@ -68,7 +68,7 @@ class MultiPackageUpdateAction(Action):
             # Step 1: Prepare repository
             if not self.strategy.prepare_repository(repo_url, repo_id):
                 logging.error(f"Failed to prepare repository {repo_url or repo_id}")
-                return None
+                raise Exception("Failed to prepare repository")
 
             # Step 2: Find target files
             target_files = self.strategy.find_target_files(repo_id, '.csproj', default_branch)
@@ -80,13 +80,13 @@ class MultiPackageUpdateAction(Action):
             branch_name = self._generate_branch_name()
             if not self.strategy.create_branch(repo_id, branch_name, default_branch):
                 logging.error(f"Failed to create branch {branch_name}")
-                return None
+                raise Exception("Failed to create branch")
 
             # Step 4: Execute package updates (Commit 1)
             package_result = self._execute_package_updates(repo_id, target_files, branch_name, default_branch)
             if not package_result['success']:
                 logging.error("Package updates failed")
-                return None
+                raise Exception("Package updates failed")
 
             # Step 5: Execute code migrations if applicable (Commit 2)
             migration_result = None
@@ -94,11 +94,11 @@ class MultiPackageUpdateAction(Action):
                 migration_result = self._execute_code_migrations(
                     repo_id, package_result['updated_packages'], branch_name, default_branch
                 )
-                
-                # If migrations fail in strict mode, rollback everything
-                if not migration_result.success and self.strict_migration_mode:
-                    logging.error("Migration failed in strict mode, rolling back everything")
-                    raise Exception("Migration failed in strict mode")
+
+                # Migrations are part of the transaction: any failure triggers rollback.
+                if not migration_result.success:
+                    logging.error("Migration failed; rolling back transaction")
+                    raise Exception("Migration failed")
 
             # Step 6: Push changes and create merge request
             if self.dry_run:
@@ -129,7 +129,7 @@ class MultiPackageUpdateAction(Action):
 
             if not mr_result:
                 logging.error("Failed to create merge request")
-                return None
+                raise Exception("Failed to create merge request")
 
             # Success! Clear rollback actions since everything worked
             transaction.clear_rollback_actions()

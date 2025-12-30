@@ -15,6 +15,11 @@ class ScmProvider(ABC):
         pass
 
     @abstractmethod
+    def close_merge_request(self, project_id: str, mr_iid: str) -> bool:
+        """Close a merge request (best-effort rollback support)."""
+        pass
+
+    @abstractmethod
     def check_existing_merge_request(self, project_id: str, title: str,
                                      source_branch: str = None, target_branch: str = None) -> Optional[Dict]:
         """Check if a merge request with the same title already exists."""
