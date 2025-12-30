@@ -1,106 +1,106 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace CSharpMigrationTool;
 
 public class MigrationRulesContainer
 {
-    [JsonProperty("rules")]
+    [JsonPropertyName("rules")]
     public List<MigrationRule> Rules { get; set; } = new();
 }
 
 public class MigrationRule
 {
-    [JsonProperty("name")]
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
-    [JsonProperty("target_nodes")]
+    [JsonPropertyName("target_nodes")]
     public List<TargetNode> TargetNodes { get; set; } = new();
 
-    [JsonProperty("action")]
+    [JsonPropertyName("action")]
     public MigrationAction Action { get; set; } = new();
 }
 
 public class TargetNode
 {
-    [JsonProperty("type")]
+    [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    [JsonProperty("method_name")]
+    [JsonPropertyName("method_name")]
     public string? MethodName { get; set; }
 
-    [JsonProperty("class_name")]
+    [JsonPropertyName("class_name")]
     public string? ClassName { get; set; }
 
-    [JsonProperty("identifier")]
+    [JsonPropertyName("identifier")]
     public string? Identifier { get; set; }
 
-    [JsonProperty("containing_type")]
+    [JsonPropertyName("containing_type")]
     public string? ContainingType { get; set; }
 
-    [JsonProperty("containing_namespace")]
+    [JsonPropertyName("containing_namespace")]
     public string? ContainingNamespace { get; set; }
 
-    [JsonProperty("attributes")]
+    [JsonPropertyName("attributes")]
     public List<string>? Attributes { get; set; }
 
-    [JsonProperty("parameters")]
+    [JsonPropertyName("parameters")]
     public List<ParameterInfo>? Parameters { get; set; }
 }
 
 public class ParameterInfo
 {
-    [JsonProperty("type")]
+    [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    [JsonProperty("name")]
+    [JsonPropertyName("name")]
     public string? Name { get; set; }
 }
 
 public class MigrationAction
 {
-    [JsonProperty("type")]
+    [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    [JsonProperty("strategy")]
+    [JsonPropertyName("strategy")]
     public string? Strategy { get; set; }
 
-    [JsonProperty("replacement_method")]
+    [JsonPropertyName("replacement_method")]
     public string? ReplacementMethod { get; set; }
 
-    [JsonProperty("replacement_code")]
+    [JsonPropertyName("replacement_code")]
     public string? ReplacementCode { get; set; }
 
-    [JsonProperty("replacement_type")]
+    [JsonPropertyName("replacement_type")]
     public string? ReplacementType { get; set; }
 
-    [JsonProperty("attribute_name")]
+    [JsonPropertyName("attribute_name")]
     public string? AttributeName { get; set; }
 
-    [JsonProperty("preserve_parameters")]
+    [JsonPropertyName("preserve_parameters")]
     public bool? PreserveParameters { get; set; }
 
-    [JsonProperty("preserve_variable_names")]
+    [JsonPropertyName("preserve_variable_names")]
     public bool? PreserveVariableNames { get; set; }
 
-    [JsonProperty("argument_name")]
+    [JsonPropertyName("argument_name")]
     public string? ArgumentName { get; set; }
 }
 
 public class MigrationResult
 {
-    [JsonProperty("success")]
+    [JsonPropertyName("success")]
     public bool Success { get; set; } = true;
 
-    [JsonProperty("modified_files")]
+    [JsonPropertyName("modified_files")]
     public List<string> ModifiedFiles { get; set; } = new();
 
-    [JsonProperty("applied_rules")]
+    [JsonPropertyName("applied_rules")]
     public List<string> AppliedRules { get; set; } = new();
 
-    [JsonProperty("errors")]
+    [JsonPropertyName("errors")]
     public List<string> Errors { get; set; } = new();
 
-    [JsonProperty("summary")]
+    [JsonPropertyName("summary")]
     public string Summary { get; set; } = string.Empty;
 
     public static MigrationResult CreateSuccess(List<string> modifiedFiles, List<string> appliedRules, string summary)

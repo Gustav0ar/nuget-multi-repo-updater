@@ -1,10 +1,20 @@
 using System.CommandLine;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CSharpMigrationTool;
 
 class Program
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never
+    };
+
     static async Task<int> Main(string[] args)
     {
         var rootCommand = new RootCommand("C# Code Migration Tool using Roslyn");
@@ -44,7 +54,7 @@ class Program
 
                 // Load migration rules
                 var rulesJson = await File.ReadAllTextAsync(rulesFile.FullName);
-                var rulesData = JsonConvert.DeserializeObject<MigrationRulesContainer>(rulesJson);
+                var rulesData = JsonSerializer.Deserialize<MigrationRulesContainer>(rulesJson, JsonOptions);
 
                 if (rulesData?.Rules == null)
                 {
@@ -88,7 +98,7 @@ class Program
 
     private static async Task WriteResultAsync(MigrationResult result)
     {
-        var json = JsonConvert.SerializeObject(result, Formatting.Indented);
+        var json = JsonSerializer.Serialize(result, JsonOptions);
         await Console.Out.WriteAsync(json);
     }
 }
