@@ -4,7 +4,7 @@ A powerful automation tool for updating NuGet packages across multiple GitLab re
 
 ## Features
 
-### 🚀 **Package Updates with Code Migration**
+### **Package Updates with Code Migration**
 
 - **Multiple Package Support**: Update multiple NuGet packages in a single operation
 - **Automated Code Migration**: AST-based C# code transformations using Roslyn
@@ -13,7 +13,7 @@ A powerful automation tool for updating NuGet packages across multiple GitLab re
 - **Version Validation**: Automatic downgrade prevention with override option
 - **Smart Detection**: Supports both single-line and multi-line PackageReference formats
 
-### 🔧 **Code Migration Engine**
+### **Code Migration Engine**
 
 - **AST-Based Transformations**: Uses Microsoft.CodeAnalysis (Roslyn) for precise code changes
 - **Method Invocation Removal**: Smart removal of deprecated method calls with chain-aware logic
@@ -21,21 +21,21 @@ A powerful automation tool for updating NuGet packages across multiple GitLab re
 - **Configurable Rules**: YAML-based migration rules for different package versions
 - **Rollback Support**: Complete transaction rollback on migration failures
 
-### 🔍 **Repository Discovery**
+### **Repository Discovery**
 
 - **Multiple Input Methods**: Command-line lists, file-based, GitLab group discovery, or configuration
 - **Advanced Filtering**: Ignore patterns, fork exclusion, archived repository handling
 - **Interactive Confirmation**: User confirmation modes for discovered repositories
 - **Flexible Selection**: Repository limits and custom selection criteria
 
-### 📊 **Status Tracking & Reporting**
+### **Status Tracking & Reporting**
 
 - **Comprehensive Tracking**: Monitor merge request status across all repositories
 - **Interactive Dashboard**: HTML visualization with filtering and status breakdown
 - **Detailed Reports**: Markdown reports with branch information and package details
 - **Progress Monitoring**: Track merge request lifecycle from creation to merge
 
-### 🛡️ **Enterprise Ready**
+### **Enterprise Ready**
 
 - **Rate Limiting**: Built-in GitLab API rate limiting with intelligent backoff
 - **SSL Support**: Configurable SSL verification for self-hosted instances
@@ -278,6 +278,7 @@ python run.py update-nuget --config-file config.json --use-local-clone
 ```
 
 This mode:
+
 1. Clones the repository locally
 2. Applies changes (package updates + migrations)
 3. Pushes changes to the remote
@@ -469,6 +470,22 @@ Rename methods to match new API signatures:
   action:
     type: 'replace_invocation'
     replacement_method: 'NewMethodName'
+```
+
+#### Remove Invocation Argument
+
+Remove a specific argument from a method invocation by identifier name.
+
+Example: `services.AddAnalyzer(configuration, isAnalyzerEnabled);` becomes `services.AddAnalyzer(configuration);`. If the local variable `isAnalyzerEnabled` becomes unused as a result, the migration tool will remove its local declaration when it is safe to do so.
+
+```yaml
+- name: 'Remove isAnalyzerEnabled argument from AddAnalyzer'
+  target_nodes:
+    - type: 'InvocationExpression'
+      method_name: 'AddAnalyzer'
+  action:
+    type: 'remove_argument'
+    argument_name: 'isAnalyzerEnabled'
 ```
 
 ### Version Conditions

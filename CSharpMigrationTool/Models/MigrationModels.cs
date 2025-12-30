@@ -81,6 +81,9 @@ public class MigrationAction
 
     [JsonProperty("preserve_variable_names")]
     public bool? PreserveVariableNames { get; set; }
+
+    [JsonProperty("argument_name")]
+    public string? ArgumentName { get; set; }
 }
 
 public class MigrationResult

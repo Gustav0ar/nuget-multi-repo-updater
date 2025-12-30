@@ -216,6 +216,7 @@ public class MigrationEngine
             {
                 "remove_invocation" => ApplyRemoveInvocation(root, invocations, action, filePath, result),
                 "replace_invocation" => ApplyReplaceInvocation(root, invocations, action, filePath, result),
+                "remove_argument" => ApplyRemoveArgument(root, invocations, action, filePath, result),
                 _ => (root, false)
             };
         }
@@ -437,6 +438,106 @@ public class MigrationEngine
         }
 
         return (currentRoot, hasChanges);
+    }
+
+    private (SyntaxNode, bool) ApplyRemoveArgument(SyntaxNode root, List<InvocationExpressionSyntax> invocations, MigrationAction action, string filePath, MigrationResult result)
+    {
+        if (string.IsNullOrWhiteSpace(action.ArgumentName))
+            return (root, false);
+
+        var argumentName = action.ArgumentName;
+
+        var currentRoot = root.TrackNodes(invocations);
+        var hasChanges = false;
+
+        foreach (var invocation in invocations)
+        {
+            try
+            {
+                var currentInvocation = currentRoot.GetCurrentNode(invocation);
+                if (currentInvocation == null)
+                    continue;
+
+                var argumentList = currentInvocation.ArgumentList;
+                if (argumentList == null)
+                    continue;
+
+                var args = argumentList.Arguments;
+                var changedThisInvocation = false;
+
+                for (var i = args.Count - 1; i >= 0; i--)
+                {
+                    var arg = args[i];
+                    if (arg.Expression is IdentifierNameSyntax id &&
+                        string.Equals(id.Identifier.ValueText, argumentName, StringComparison.Ordinal))
+                    {
+                        args = args.RemoveAt(i);
+                        changedThisInvocation = true;
+                    }
+                }
+
+                if (!changedThisInvocation)
+                    continue;
+
+                var updatedInvocation = currentInvocation.WithArgumentList(argumentList.WithArguments(args));
+                currentRoot = currentRoot.ReplaceNode(currentInvocation, updatedInvocation);
+                hasChanges = true;
+            }
+            catch (Exception ex)
+            {
+                var lineSpan = invocation.GetLocation().GetLineSpan();
+                result.AddError($"Error removing argument '{action.ArgumentName}' in {filePath} at line {lineSpan.StartLinePosition.Line + 1}: {ex.Message}\nStack Trace: {ex.StackTrace}");
+            }
+        }
+
+        if (hasChanges)
+        {
+            var (cleanedRoot, removedDeclaration) = RemoveLocalDeclarationIfUnused(currentRoot, argumentName);
+            currentRoot = cleanedRoot;
+            hasChanges = hasChanges || removedDeclaration;
+        }
+
+        return (currentRoot, hasChanges);
+    }
+
+    private static (SyntaxNode, bool) RemoveLocalDeclarationIfUnused(SyntaxNode root, string variableName)
+    {
+        if (string.IsNullOrWhiteSpace(variableName))
+            return (root, false);
+
+        var localDeclStatements = root.DescendantNodes()
+            .OfType<LocalDeclarationStatementSyntax>()
+            .Where(s => s.Declaration?.Variables.Count == 1 &&
+                        string.Equals(s.Declaration.Variables[0].Identifier.ValueText, variableName, StringComparison.Ordinal))
+            .ToList();
+
+        if (!localDeclStatements.Any())
+            return (root, false);
+
+        // Consider the variable "used" if it appears as an IdentifierName outside its declarator.
+        var identifiers = root.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Where(id => string.Equals(id.Identifier.ValueText, variableName, StringComparison.Ordinal))
+            .ToList();
+
+        var usedOutsideDeclaration = identifiers.Any(id => id.AncestorsAndSelf().OfType<VariableDeclaratorSyntax>().FirstOrDefault() == null);
+        if (usedOutsideDeclaration)
+            return (root, false);
+
+        // Remove all matching declarations (usually one) if unused.
+        var updatedRoot = root;
+        var removed = false;
+        foreach (var statement in localDeclStatements)
+        {
+            var newRoot = updatedRoot.RemoveNode(statement, SyntaxRemoveOptions.KeepExteriorTrivia);
+            if (newRoot != null)
+            {
+                updatedRoot = newRoot;
+                removed = true;
+            }
+        }
+
+        return (updatedRoot, removed);
     }
 
     private InvocationExpressionSyntax ReplaceMethodName(InvocationExpressionSyntax invocation, string newMethodName)

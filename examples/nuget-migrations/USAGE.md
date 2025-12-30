@@ -134,8 +134,8 @@ dotnet build
 dotnet test
 
 # Check for common issues
-grep -r "using Newtonsoft.Json" src/ || echo "✓ No Newtonsoft.Json references found"
-grep -r "AddDelegatingHandler" src/ || echo "✓ No obsolete handler calls found"
+grep -r "using Newtonsoft.Json" src/ || echo "No Newtonsoft.Json references found"
+grep -r "AddDelegatingHandler" src/ || echo "No obsolete handler calls found"
 ```
 
 ## Customizing Migration Rules

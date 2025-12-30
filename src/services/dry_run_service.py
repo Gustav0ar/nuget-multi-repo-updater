@@ -68,7 +68,8 @@ class DryRunService:
         print(f"{'='*80}")
         print(f"The following operations will be performed locally:")
         print(f"Total repositories to process: {len(repositories)}")
-        print(f"Packages to update: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
+        packages_label = ", ".join([f"{p['name']}@{p['version']}" for p in packages_to_update])
+        print(f"Packages to update: {packages_label}")
         if enable_migrations:
             print(f"Code migration: Enabled")
         else:
@@ -79,7 +80,7 @@ class DryRunService:
         
         for repo in repositories:
             print(f"\n{'-'*60}")
-            print(f"🔍 Processing: {repo['name']} ({repo['path_with_namespace']})")
+            print(f"Processing: {repo['name']} ({repo['path_with_namespace']})")
             
             try:
                 action = MultiPackageUpdateAction(
@@ -100,10 +101,10 @@ class DryRunService:
                 if result:
                     self._print_local_dry_run_result(result)
                 else:
-                    print("❌ Failed to process repository (check logs)")
+                    print("ERROR: Failed to process repository (check logs)")
                     
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f"ERROR: {e}")
                 logging.error(f"Local dry run failed for {repo['id']}: {e}")
 
         # Allow tests to disable exit behavior
@@ -115,15 +116,15 @@ class DryRunService:
         package_result = result.get('package_result', {})
         migration_result = result.get('migration_result', {})
         
-        print("\n   ✅ Changes applied successfully (Dry Run)")
+        print("\n   OK: Changes applied successfully (Dry Run)")
         
         if package_result.get('updated_packages'):
-            print(f"   📦 Updated Packages ({len(package_result['updated_packages'])}):")
+            print(f"   Updated Packages ({len(package_result['updated_packages'])}):")
             for pkg in package_result['updated_packages']:
                 print(f"      - {pkg['name']} to {pkg['version']}")
         
         if migration_result and migration_result.get('applied_rules'):
-            print(f"   🛠️  Applied Migration Rules ({len(migration_result['applied_rules'])}):")
+            print(f"   Applied Migration Rules ({len(migration_result['applied_rules'])}):")
             for rule in migration_result['applied_rules']:
                 print(f"      - {rule}")
         
@@ -133,7 +134,7 @@ class DryRunService:
             modified_files.update(migration_result.get('modified_files', []) or [])
             
         if modified_files:
-            print(f"   📝 Modified Files ({len(modified_files)}):")
+            print(f"   Modified Files ({len(modified_files)}):")
             for file in sorted(modified_files):
                 print(f"      - {file}")
 
@@ -148,7 +149,7 @@ class DryRunService:
             project = self.scm_provider.get_project(repo)
 
         if not project:
-            print(f"❌ Repository not found: {repo}")
+            print(f"ERROR: Repository not found: {repo}")
             dry_run_summary['errors'] += 1
             return
 
@@ -156,7 +157,7 @@ class DryRunService:
         target_branch = project.get('target_branch', project['default_branch'])
 
         print(f"\n{'-'*60}")
-        print(f"🔍 Analyzing: {project['name']} ({project['path_with_namespace']})")
+        print(f"Analyzing: {project['name']} ({project['path_with_namespace']})")
         print(f"   Default Branch: {project['default_branch']}")
         if target_branch != project['default_branch']:
             print(f"   Target Branch: {target_branch} (using most recent branch)")
@@ -177,7 +178,7 @@ class DryRunService:
         # Use target_branch if available, otherwise fall back to default_branch
         target_branch = project.get('target_branch', project['default_branch'])
 
-        print(f"\n   📦 Package: {package_name} → {new_version}")
+        print(f"\n   Package: {package_name} → {new_version}")
 
         # Check for existing merge request
         mr_title = f"Update {package_name} to version {new_version}"
@@ -187,7 +188,7 @@ class DryRunService:
             )
 
             if existing_mr:
-                print(f"   ✅ Existing MR found: {existing_mr['web_url']}")
+                print(f"   Existing MR found: {existing_mr['web_url']}")
                 print(f"      Status: {existing_mr.get('state', 'unknown')}")
                 dry_run_summary['existing_mrs'] += 1
                 dry_run_report.add_entry(
@@ -196,11 +197,11 @@ class DryRunService:
                 )
                 return
         except Exception as e:
-            print(f"   ⚠️  Error checking existing MR: {e}")
+            print(f"   WARNING: Error checking existing MR: {e}")
 
         # Simulate repository analysis (without cloning)
-        print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
-        print(f"   🌿 Would create branch: update-{package_name.lower().replace('.', '-')}-to-{new_version.replace('.', '_')}")
+        print(f"   Would clone repository to: ./temp/{project['name']}")
+        print(f"   Would create branch: update-{package_name.lower().replace('.', '-')}-to-{new_version.replace('.', '_')}")
 
         # Simulate .csproj file analysis and migration analysis
         migration_info = self._simulate_csproj_and_migration_analysis(
@@ -212,7 +213,7 @@ class DryRunService:
                                               allow_downgrade: bool, dry_run_report: ReportGenerator,
                                               dry_run_summary: Dict[str, int]) -> Dict[str, Any]:
         """Simulate .csproj file analysis and migration rule analysis."""
-        print(f"   📄 Would scan for .csproj files...")
+        print("   Would scan for .csproj files...")
         migration_info = None
 
         # Use target_branch if available, otherwise fall back to default_branch
@@ -228,7 +229,7 @@ class DryRunService:
                            if item['type'] == 'blob' and item['path'].endswith('.cs')]
 
                 if csproj_files:
-                    print(f"   📋 Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
+                    print(f"   Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
                     
                     # Analyze .csproj files for package updates
                     old_versions = self._analyze_csproj_files(
@@ -259,7 +260,7 @@ class DryRunService:
                             target_branch=target_branch
                         )
                     else:
-                        print(f"   ➖ No changes needed")
+                        print("   No changes needed")
                         dry_run_summary['no_changes'] += 1
                         dry_run_report.add_entry(
                             project['name'], package_name, new_version,
@@ -267,7 +268,7 @@ class DryRunService:
                             target_branch=target_branch
                         )
                 else:
-                    print(f"   ❌ No .csproj files found")
+                    print("   ERROR: No .csproj files found")
                     dry_run_summary['no_changes'] += 1
                     dry_run_report.add_entry(
                         project['name'], package_name, new_version,
@@ -275,7 +276,7 @@ class DryRunService:
                         target_branch=target_branch
                     )
         except Exception as e:
-            print(f"   ❌ Error analyzing repository: {e}")
+            print(f"   ERROR: Error analyzing repository: {e}")
             dry_run_summary['errors'] += 1
             dry_run_report.add_entry(
                 project['name'], package_name, new_version,
@@ -304,7 +305,7 @@ class DryRunService:
             
             # If no migrations found, return early
             if not migration_rules:
-                print(f"   ➖ No migration rules applicable")
+                print("   No migration rules applicable")
                 return {
                     'has_migrations': False,
                     'rules_applied': [],
@@ -328,12 +329,12 @@ class DryRunService:
             }
             
             if migration_info and migration_info.get('has_migrations'):
-                print(f"   🔧 Found {len(migration_info.get('rules_applied', []))} migration rules")
+                print(f"   Found {len(migration_info.get('rules_applied', []))} migration rules")
                 files_to_modify = migration_info.get('would_modify_files', [])
                 potential_changes = migration_info.get('potential_changes', [])
                 
                 if files_to_modify:
-                    print(f"   📝 Would modify {len(files_to_modify)} code files for migrations")
+                    print(f"   Would modify {len(files_to_modify)} code files for migrations")
                     dry_run_summary['total_migration_files'] += len(files_to_modify)
                     
                     for file_path in files_to_modify[:3]:  # Show first 3 files
@@ -343,7 +344,7 @@ class DryRunService:
                 
                 # Show code change preview
                 if potential_changes:
-                    print(f"   🔍 Code changes preview (first {min(2, len(potential_changes))} changes):")
+                    print(f"   Code changes preview (first {min(2, len(potential_changes))} changes):")
                     for i, change in enumerate(potential_changes[:2], 1):
                         file_path = change.get('file', 'Unknown file')
                         line_num = change.get('line', '?')
@@ -364,14 +365,14 @@ class DryRunService:
                         print(f"      ... and {len(potential_changes) - 2} more changes (see report for details)")
                 
                 if not files_to_modify:
-                    print(f"   ℹ️  Migration rules found but no files would be modified")
+                    print("   INFO: Migration rules found but no files would be modified")
             else:
-                print(f"   ➖ No migration rules applicable")
+                print("   No migration rules applicable")
                 
             return migration_info
             
         except Exception as e:
-            print(f"   ⚠️  Error analyzing migrations: {e}")
+            print(f"   WARNING: Error analyzing migrations: {e}")
             dry_run_summary['migration_errors'] += 1
             return {
                 'has_migrations': False,
@@ -408,22 +409,22 @@ class DryRunService:
                     if match:
                         old_version = match.group(1)
                         if old_version == new_version:
-                            print(f"        ✓ Already at version {new_version}")
+                            print(f"        Already at version {new_version}")
                         else:
                             # Check for downgrade
                             try:
                                 if not allow_downgrade and parse_version(new_version) < parse_version(old_version):
-                                    print(f"        ⚠️  Would skip downgrade: {old_version} → {new_version}")
+                                    print(f"        WARNING: Would skip downgrade: {old_version} → {new_version}")
                                 else:
-                                    print(f"        🔄 Would update: {old_version} → {new_version}")
+                                    print(f"        Would update: {old_version} → {new_version}")
                                     versions_found.append(old_version)
                             except:
-                                print(f"        🔄 Would update: {old_version} → {new_version}")
+                                print(f"        Would update: {old_version} → {new_version}")
                                 versions_found.append(old_version)
                     else:
-                        print(f"        ➖ Package not found in this file")
+                        print("        Package not found in this file")
             except Exception as e:
-                print(f"        ⚠️  Could not analyze file: {e}")
+                print(f"        WARNING: Could not analyze file: {e}")
 
         return versions_found
 
@@ -433,10 +434,10 @@ class DryRunService:
         # Use target_branch if available, otherwise fall back to default_branch
         target_branch = project.get('target_branch', project['default_branch'])
         
-        print(f"   ✅ Would modify {files_would_modify} files")
-        print(f"   📝 Would commit changes with message: 'Update {package_name} to version {new_version}'")
-        print(f"   🚀 Would push branch to origin")
-        print(f"   🔀 Would create merge request:")
+        print(f"   Would modify {files_would_modify} files")
+        print(f"   Would commit changes with message: 'Update {package_name} to version {new_version}'")
+        print("   Would push branch to origin")
+        print("   Would create merge request:")
         print(f"      Title: Update {package_name} to version {new_version}")
         print(f"      Target: {target_branch}")
         print(f"      Source: update-{package_name.lower().replace('.', '-')}-to-{new_version.replace('.', '_')}")
@@ -447,25 +448,25 @@ class DryRunService:
         print(f"\n{'='*80}")
         print("DRY RUN SUMMARY")
         print(f"{'='*80}")
-        print(f"📊 Total repositories analyzed: {dry_run_summary['total_repos']}")
-        print(f"🆕 Would create new MRs: {dry_run_summary['would_create_mrs']}")
-        print(f"♻️  Existing MRs found: {dry_run_summary['existing_mrs']}")
-        print(f"➖ No changes needed: {dry_run_summary['no_changes']}")
-        print(f"❌ Errors encountered: {dry_run_summary['errors']}")
-        print(f"📝 Total files that would be modified: {dry_run_summary['total_files_to_modify']}")
+        print(f"Total repositories analyzed: {dry_run_summary['total_repos']}")
+        print(f"Would create new MRs: {dry_run_summary['would_create_mrs']}")
+        print(f"Existing MRs found: {dry_run_summary['existing_mrs']}")
+        print(f"No changes needed: {dry_run_summary['no_changes']}")
+        print(f"Errors encountered: {dry_run_summary['errors']}")
+        print(f"Total files that would be modified: {dry_run_summary['total_files_to_modify']}")
         
         # Migration-specific statistics
         if dry_run_summary.get('total_migration_files', 0) > 0:
-            print(f"🔧 Code files that would be migrated: {dry_run_summary['total_migration_files']}")
+            print(f"Code files that would be migrated: {dry_run_summary['total_migration_files']}")
         if dry_run_summary.get('migration_errors', 0) > 0:
-            print(f"⚠️  Migration analysis errors: {dry_run_summary['migration_errors']}")
+            print(f"WARNING: Migration analysis errors: {dry_run_summary['migration_errors']}")
 
         # Generate dry run report if requested
         if report_file and isinstance(report_file, str):
             report_filename = dry_run_report.generate_markdown_report(report_file)
-            print(f"\n📄 Dry run report saved to: {report_filename}")
+            print(f"\nDry run report saved to: {report_filename}")
 
-        print(f"\n💡 To execute these changes, run the same command without --dry-run")
+        print("\nTo execute these changes, run the same command without --dry-run")
         print(f"{'='*80}")
 
     def _simulate_multi_package_transaction(self, project: Dict, packages_to_update: List[Dict],
@@ -484,8 +485,9 @@ class DryRunService:
             package_names = "-".join([pkg['name'].split('.')[-1].lower() for pkg in packages_to_update[:2]])
             branch_name = f"update-{package_names}-{timestamp}"
             mr_title = f"Update {len(packages_to_update)} NuGet packages"
-        
-        print(f"\n   📦 Packages: {', '.join([f'{p['name']}@{p['version']}' for p in packages_to_update])}")
+
+        packages_label = ", ".join([f"{p['name']}@{p['version']}" for p in packages_to_update])
+        print(f"\n   Packages: {packages_label}")
 
         # Use target_branch if available, otherwise fall back to default_branch
         target_branch = project.get('target_branch', project['default_branch'])
@@ -496,20 +498,20 @@ class DryRunService:
                 project['id'], mr_title, target_branch=target_branch
             )
             if existing_mr:
-                print(f"   ✅ Existing MR found: {existing_mr['web_url']}")
+                print(f"   Existing MR found: {existing_mr['web_url']}")
                 print(f"      Status: {existing_mr.get('state', 'unknown')}")
                 dry_run_summary['existing_mrs'] += 1
                 return
         except Exception as e:
-            print(f"   ⚠️  Error checking existing MR: {e}")
+            print(f"   WARNING: Error checking existing MR: {e}")
 
         # Simulate single transaction workflow
         if use_local_clone:
-            print(f"   🔄 Would clone repository to: ./temp/{project['name']}")
+            print(f"   Would clone repository to: ./temp/{project['name']}")
         else:
-            print(f"   🔄 Would use GitLab API to access repository content")
-        print(f"   🌿 Would create branch: {branch_name}")
-        print(f"   📄 Would scan for .csproj files...")
+            print("   Would use GitLab API to access repository content")
+        print(f"   Would create branch: {branch_name}")
+        print("   Would scan for .csproj files...")
         
         # Simulate finding files and analyzing packages together
         try:
@@ -519,7 +521,7 @@ class DryRunService:
                 cs_files = [item['path'] for item in tree if item['type'] == 'blob' and item['path'].endswith('.cs')]
                 
                 if csproj_files:
-                    print(f"   📋 Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
+                    print(f"   Found {len(csproj_files)} .csproj files and {len(cs_files)} .cs files")
                     
                     # Simulate analyzing all packages together
                     total_modified_files = 0
@@ -547,7 +549,7 @@ class DryRunService:
 
                     # Simulate the two-commit workflow
                     if total_modified_files > 0 or has_migrations:
-                        print(f"   ✅ Would modify {total_modified_files} files")
+                        print(f"   Would modify {total_modified_files} files")
                         
                         # Commit 1: Package updates
                         if len(packages_to_update) == 1:
@@ -555,14 +557,14 @@ class DryRunService:
                         else:
                             package_list = ", ".join([f"{pkg['name']} to {pkg['version']}" for pkg in packages_to_update])
                             package_commit = f"Update {len(packages_to_update)} packages: {package_list}"
-                        print(f"   📝 Would commit package updates with message: '{package_commit}'")
+                        print(f"   Would commit package updates with message: '{package_commit}'")
                         
                         # Commit 2: Migrations (if applicable)
                         if has_migrations:
-                            print(f"   🔧 Would commit migrations with message: 'Apply code migrations for updated packages'")
+                            print("   Would commit migrations with message: 'Apply code migrations for updated packages'")
                         
-                        print(f"   🚀 Would push branch to origin")
-                        print(f"   🔀 Would create merge request:")
+                        print("   Would push branch to origin")
+                        print("   Would create merge request:")
                         print(f"      Title: {mr_title}")
                         print(f"      Target: {target_branch}")
                         print(f"      Source: {branch_name}")
@@ -586,11 +588,11 @@ class DryRunService:
                                 target_branch=target_branch
                             )
                     else:
-                        print(f"   ➖ No changes needed")
+                        print("   No changes needed")
                         dry_run_summary['no_changes'] += 1
                 else:
-                    print(f"   ➖ No .csproj files found")
+                    print("   No .csproj files found")
                     dry_run_summary['no_changes'] += 1
         except Exception as e:
-            print(f"   ❌ Error analyzing repository: {e}")
+            print(f"   ERROR: Error analyzing repository: {e}")
             dry_run_summary['errors'] += 1

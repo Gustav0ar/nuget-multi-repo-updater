@@ -415,6 +415,134 @@ namespace TestProject
 
         migrated_text = migrated_bytes.decode('utf-8')
         assert '.AddAnalyzerDelegatingHandler(' not in migrated_text
+
+    def test_remove_argument_and_remove_unused_local_declaration(self):
+        """Remove isAnalyzerEnabled argument and remove its now-unused local declaration."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'AnalyzerFlag.cs')
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public static class AnalyzerExtensions
+    {
+        public static object AddAnalyzer(this object services, object configuration, bool isAnalyzerEnabled) => services;
+    }
+
+    public sealed class Test
+    {
+        public void Configure(object services, object configuration)
+        {
+            var isAnalyzerEnabled = Convert.ToBoolean(Environment.GetEnvironmentVariable("EnableAnalyzer"));
+            services.AddAnalyzer(configuration, isAnalyzerEnabled);
+        }
+    }
+}
+'''
+
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+
+        rules = [
+            {
+                'name': 'Remove analyzer enabled flag',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'AddAnalyzer'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_argument',
+                    'argument_name': 'isAnalyzerEnabled'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, f"Tool failed: {result.stderr}\n{result.stdout}"
+
+        migrated = Path(cs_file).read_text(encoding='utf-8', newline='')
+        assert 'services.AddAnalyzer(configuration, isAnalyzerEnabled)' not in migrated
+        assert 'services.AddAnalyzer(configuration)' in migrated
+        assert 'var isAnalyzerEnabled =' not in migrated
+
+    def test_remove_argument_but_keep_local_if_still_used(self):
+        """Remove isAnalyzerEnabled argument but keep its declaration if it is still used elsewhere."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'AnalyzerFlagStillUsed.cs')
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public static class AnalyzerExtensions
+    {
+        public static object AddAnalyzer(this object services, object configuration, bool isAnalyzerEnabled) => services;
+    }
+
+    public sealed class Test
+    {
+        public void Configure(object services, object configuration)
+        {
+            var isAnalyzerEnabled = Convert.ToBoolean(Environment.GetEnvironmentVariable("EnableAnalyzer"));
+            services.AddAnalyzer(configuration, isAnalyzerEnabled);
+
+            if (isAnalyzerEnabled)
+            {
+                Console.WriteLine("enabled");
+            }
+        }
+    }
+}
+'''
+
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+
+        rules = [
+            {
+                'name': 'Remove analyzer enabled flag',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'AddAnalyzer'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_argument',
+                    'argument_name': 'isAnalyzerEnabled'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, f"Tool failed: {result.stderr}\n{result.stdout}"
+
+        migrated = Path(cs_file).read_text(encoding='utf-8', newline='')
+        assert 'services.AddAnalyzer(configuration, isAnalyzerEnabled)' not in migrated
+        assert 'services.AddAnalyzer(configuration)' in migrated
+        assert 'var isAnalyzerEnabled =' in migrated
+        assert 'if (isAnalyzerEnabled)' in migrated
         
     def test_remove_invocation_rule(self):
         """Test removing method invocations."""

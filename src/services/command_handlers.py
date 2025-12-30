@@ -37,6 +37,16 @@ class UpdateNugetCommandHandler:
         # Parse packages to update
         packages_to_update = self._parse_packages_to_update(args)
 
+        def _coerce_bool(value: Any, default: bool = False) -> bool:
+            if isinstance(value, bool):
+                return value
+            return default
+
+        def _coerce_str(value: Any, default: str = None) -> str:
+            if isinstance(value, str):
+                return value
+            return default
+
         # Initialize migration support if enabled
         migration_config_service = None
         enable_migrations = getattr(args, 'enable_migrations', None)
@@ -49,6 +59,8 @@ class UpdateNugetCommandHandler:
             if enable_migrations is None:
                 # Fallback to old key for backward compatibility
                 enable_migrations = self.config_service.get('enable_code_migrations', False)
+
+            enable_migrations = _coerce_bool(enable_migrations, False)
 
         if enable_migrations is None:
             enable_migrations = False
@@ -86,12 +98,14 @@ class UpdateNugetCommandHandler:
             dry_run_report_file = getattr(args, 'report_file', None)
             if not dry_run_report_file and self.config_service:
                 dry_run_report_file = self.config_service.get('report_file')
+            dry_run_report_file = _coerce_str(dry_run_report_file, None)
 
             use_local_clone = getattr(args, 'use_local_clone', None)
             if use_local_clone is None and self.config_service:
                 use_local_clone = self.config_service.get('use_local_clone', False)
             if use_local_clone is None:
                 use_local_clone = False
+            use_local_clone = _coerce_bool(use_local_clone, False)
 
             # Modify repositories to include target branch information
             repositories_with_target_branch = []
@@ -101,14 +115,9 @@ class UpdateNugetCommandHandler:
                 repo_copy['target_branch'] = target_branch
                 repositories_with_target_branch.append(repo_copy)
 
-            if use_local_clone:
-                dry_run_service.perform_local_dry_run(
-                    repositories_with_target_branch, packages_to_update, args, migration_config_service, enable_migrations
-                )
-            else:
-                dry_run_service.simulate_package_updates(
-                    repositories_with_target_branch, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
-                )
+            dry_run_service.simulate_package_updates(
+                repositories_with_target_branch, packages_to_update, args.allow_downgrade, dry_run_report_file, use_local_clone
+            )
             return
 
         # Execute actual updates with migration support
@@ -276,7 +285,7 @@ class UpdateNugetCommandHandler:
         """Append rollback information to the report file."""
         try:
             with open(report_file, 'a', encoding='utf-8') as f:
-                f.write("\n\n## 🔄 Rollback Information\n\n")
+                f.write("\n\n## Rollback Information\n\n")
                 f.write("The following repositories required rollback due to failures:\n\n")
                 
                 for report in rollback_reports:

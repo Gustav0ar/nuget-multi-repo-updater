@@ -143,11 +143,17 @@ class CodeMigrationService:
             
         # Check for built executable in any .NET version
         bin_debug_dir = tool_dir / 'bin' / 'Debug'
-        
+
         if bin_debug_dir.exists():
             # Find all target framework directories (e.g., net6.0, net7.0, net8.0, net9.0, etc.)
-            target_framework_dirs = [d for d in bin_debug_dir.iterdir() 
-                                   if d.is_dir() and d.name.startswith('net')]
+            # Be defensive: tests may patch os.path.exists, and file systems can change.
+            try:
+                target_framework_dirs = [
+                    d for d in bin_debug_dir.iterdir()
+                    if d.is_dir() and d.name.startswith('net')
+                ]
+            except (FileNotFoundError, NotADirectoryError):
+                target_framework_dirs = []
             
             # Sort by version number (newest first) - properly handle numeric versions
             def parse_net_version(dirname):
@@ -226,8 +232,13 @@ class CodeMigrationService:
             
             if bin_debug_dir.exists():
                 # Find all target framework directories
-                target_framework_dirs = [d for d in bin_debug_dir.iterdir() 
-                                       if d.is_dir() and d.name.startswith('net')]
+                try:
+                    target_framework_dirs = [
+                        d for d in bin_debug_dir.iterdir()
+                        if d.is_dir() and d.name.startswith('net')
+                    ]
+                except (FileNotFoundError, NotADirectoryError):
+                    target_framework_dirs = []
                 
                 # Sort by version number (newest first) - properly handle numeric versions
                 def parse_net_version(dirname):
@@ -358,6 +369,7 @@ class CodeMigrationService:
                         'replacement_method',
                         'containing_type',
                         'containing_namespace',
+                        'argument_name',
                         'type_name',
                         'namespace',
                         'old_namespace',
@@ -650,27 +662,27 @@ class CodeMigrationService:
         ]
         
         if results.success:
-            report_lines.append("✅ Migration completed successfully")
+            report_lines.append("Migration completed successfully")
         else:
-            report_lines.append("❌ Migration failed")
+            report_lines.append("Migration failed")
             
-        report_lines.append(f"📋 Summary: {results.summary}")
+        report_lines.append(f"Summary: {results.summary}")
         report_lines.append("")
         
         if results.applied_rules:
-            report_lines.append("✅ Applied Rules:")
+            report_lines.append("Applied Rules:")
             for rule in results.applied_rules:
                 report_lines.append(f"  • {rule}")
             report_lines.append("")
             
         if results.modified_files:
-            report_lines.append("📝 Modified Files:")
+            report_lines.append("Modified Files:")
             for file_path in results.modified_files:
                 report_lines.append(f"  • {file_path}")
             report_lines.append("")
             
         if results.errors:
-            report_lines.append("❌ Errors:")
+            report_lines.append("Errors:")
             for error in results.errors:
                 report_lines.append(f"  • {error}")
             report_lines.append("")

@@ -188,7 +188,7 @@ Generated: {timestamp}
 
         # Report merged MRs
         if mrs_by_status['merged']:
-            report_content += f"### ✅ Merged ({len(mrs_by_status['merged'])})\n\n"
+            report_content += f"### Merged ({len(mrs_by_status['merged'])})\n\n"
             for mr in mrs_by_status['merged']:
                 package_name = mr.get('package_name', 'Unknown')
                 new_version = mr.get('new_version', 'Unknown')
@@ -199,7 +199,7 @@ Generated: {timestamp}
 
         # Report open MRs
         if mrs_by_status['opened']:
-            report_content += f"### 🔄 Open ({len(mrs_by_status['opened'])})\n\n"
+            report_content += f"### Open ({len(mrs_by_status['opened'])})\n\n"
             for mr in mrs_by_status['opened']:
                 package_name = mr.get('package_name', 'Unknown')
                 new_version = mr.get('new_version', 'Unknown')
@@ -210,7 +210,7 @@ Generated: {timestamp}
 
         # Report closed MRs
         if mrs_by_status['closed']:
-            report_content += f"### ❌ Closed ({len(mrs_by_status['closed'])})\n\n"
+            report_content += f"### Closed ({len(mrs_by_status['closed'])})\n\n"
             for mr in mrs_by_status['closed']:
                 package_name = mr.get('package_name', 'Unknown')
                 new_version = mr.get('new_version', 'Unknown')
@@ -221,7 +221,7 @@ Generated: {timestamp}
 
         # Report unknown/error status
         if mrs_by_status['unknown']:
-            report_content += f"### ❓ Unknown Status ({len(mrs_by_status['unknown'])})\n\n"
+            report_content += f"### Unknown Status ({len(mrs_by_status['unknown'])})\n\n"
             for mr in mrs_by_status['unknown']:
                 package_name = mr.get('package_name', 'Unknown')
                 new_version = mr.get('new_version', 'Unknown')
@@ -293,7 +293,7 @@ Generated: {timestamp}
             mr_sections_html += f"""
             <div class="mr-section" data-status="merged">
                 <div class="section-header" onclick="toggleSection(this)">
-                    <span class="section-icon">✅</span>
+                    <span class="section-icon"></span>
                     <span class="section-title">Merged</span>
                     <span class="section-count">{len(mrs_by_status['merged'])}</span>
                     <button class="toggle-btn">▼</button>
@@ -324,7 +324,7 @@ Generated: {timestamp}
             mr_sections_html += f"""
             <div class="mr-section" data-status="opened">
                 <div class="section-header" onclick="toggleSection(this)">
-                    <span class="section-icon">🔄</span>
+                    <span class="section-icon"></span>
                     <span class="section-title">Open</span>
                     <span class="section-count">{len(mrs_by_status['opened'])}</span>
                     <button class="toggle-btn">▼</button>
@@ -355,7 +355,7 @@ Generated: {timestamp}
             mr_sections_html += f"""
             <div class="mr-section" data-status="closed">
                 <div class="section-header" onclick="toggleSection(this)">
-                    <span class="section-icon">❌</span>
+                    <span class="section-icon"></span>
                     <span class="section-title">Closed</span>
                     <span class="section-count">{len(mrs_by_status['closed'])}</span>
                     <button class="toggle-btn">▼</button>
@@ -562,7 +562,7 @@ Generated: {timestamp}
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔀 Merge Request Status Dashboard</h1>
+            <h1>Merge Request Status Dashboard</h1>
             <p>Multiple Packages Update Status</p>
             <p>Generated: {timestamp}</p>
         </div>

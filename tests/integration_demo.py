@@ -59,15 +59,15 @@ def test_migration_feature_demo():
         import yaml
         with open(config_file, 'w') as f:
             yaml.dump(config_data, f)
-        print(f"✅ Created migration configuration: {config_file}")
+        print(f"Created migration configuration: {config_file}")
         
         # 2. Test migration configuration service
         migration_service = MigrationConfigurationService(config_file)
-        print(f"✅ Loaded {len(migration_service.migrations)} migration configurations")
+        print(f"Loaded {len(migration_service.migrations)} migration configurations")
         
         # 3. Test getting applicable migrations
         applicable = migration_service.get_applicable_migrations('TestPackage', '0.9.0', '2.0.0')
-        print(f"✅ Found {len(applicable)} applicable migrations for TestPackage upgrade")
+        print(f"Found {len(applicable)} applicable migrations for TestPackage upgrade")
         
         if applicable:
             migration = applicable[0]
@@ -78,9 +78,9 @@ def test_migration_feature_demo():
         # 4. Check C# migration tool availability
         csharp_tool_path = workspace_root / 'CSharpMigrationTool' / 'bin' / 'Debug' / 'net9.0' / 'CSharpMigrationTool.dll'
         if csharp_tool_path.exists():
-            print(f"✅ C# migration tool built: {csharp_tool_path}")
+            print(f"C# migration tool built: {csharp_tool_path}")
         else:
-            print(f"⚠️  C# migration tool not built (expected for test environment)")
+            print("WARNING: C# migration tool not built (expected for test environment)")
         
         # 5. Create sample C# file
         sample_cs = os.path.join(temp_dir, 'SampleClass.cs')
@@ -103,7 +103,7 @@ namespace SampleProject
         
         with open(sample_cs, 'w') as f:
             f.write(cs_content)
-        print(f"✅ Created sample C# file: {sample_cs}")
+        print(f"Created sample C# file: {sample_cs}")
         
         # 6. Create migration rules JSON for C# tool
         rules_json = {
@@ -132,7 +132,7 @@ namespace SampleProject
         rules_file = os.path.join(temp_dir, 'rules.json')
         with open(rules_file, 'w') as f:
             json.dump(rules_json, f, indent=2)
-        print(f"✅ Created C# migration rules: {rules_file}")
+        print(f"Created C# migration rules: {rules_file}")
         
         # 7. Test C# tool execution (if available)
         if csharp_tool_path.exists():
@@ -146,39 +146,39 @@ namespace SampleProject
                 
                 if result.returncode == 0:
                     output = json.loads(result.stdout)
-                    print(f"✅ C# migration tool executed successfully")
+                    print("C# migration tool executed successfully")
                     print(f"   - Success: {output.get('success', False)}")
                     print(f"   - Modified files: {output.get('modified_files', [])}")
                     print(f"   - Applied rules: {output.get('applied_rules', [])}")
                 else:
-                    print(f"⚠️  C# migration tool failed: {result.stderr}")
+                    print(f"WARNING: C# migration tool failed: {result.stderr}")
             except Exception as e:
-                print(f"⚠️  C# migration tool test failed: {e}")
+                print(f"WARNING: C# migration tool test failed: {e}")
         
         print("\n" + "="*60)
         print("MIGRATION FEATURE COMPONENTS VERIFIED")
         print("="*60)
         
         # Summary of what was demonstrated
-        print("✅ Migration Configuration Service - Loading YAML rules")
-        print("✅ Version Condition Evaluation - Package upgrade detection")
-        print("✅ Rule Applicability Logic - Matching migrations to packages")
-        print("✅ C# Migration Tool - AST-based code transformations")
-        print("✅ Transaction Rollback Support - Comprehensive error recovery")
-        print("✅ Two-Commit Workflow - Package updates + code migrations")
+        print("Migration Configuration Service - Loading YAML rules")
+        print("Version Condition Evaluation - Package upgrade detection")
+        print("Rule Applicability Logic - Matching migrations to packages")
+        print("C# Migration Tool - AST-based code transformations")
+        print("Transaction Rollback Support - Comprehensive error recovery")
+        print("Two-Commit Workflow - Package updates + code migrations")
         
-        print("\n🎉 All migration feature components are ready for deployment!")
+        print("\nAll migration feature components are ready for deployment!")
         return True
         
     except Exception as e:
-        print(f"❌ Demo failed: {e}")
+        print(f"ERROR: Demo failed: {e}")
         return False
         
     finally:
         # Clean up
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-        print(f"🧹 Cleaned up demo directory")
+        print("Cleaned up demo directory")
 
 
 if __name__ == '__main__':

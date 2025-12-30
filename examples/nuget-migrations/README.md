@@ -27,6 +27,7 @@ This folder contains examples of common migration scenarios when updating NuGet 
 ### 4. Parameter Changes
 
 - [ASP.NET Core middleware parameter updates](./parameter-changes/middleware.md)
+- [Remove an invocation argument](./parameter-changes/remove-argument.md)
 - [Entity Framework configuration parameter changes](./parameter-changes/entity-framework.md)
 
 ### 5. Namespace Changes

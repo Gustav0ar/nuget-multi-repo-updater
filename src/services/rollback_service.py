@@ -35,22 +35,22 @@ class RollbackResult:
         report = ["=== ROLLBACK REPORT ==="]
         
         if self.success:
-            report.append("✅ Rollback completed successfully")
+            report.append("Rollback completed successfully")
         else:
-            report.append("❌ Rollback completed with errors")
+            report.append("Rollback completed with errors")
             
         if self.completed_actions:
-            report.append("\n✅ Completed Actions:")
+            report.append("\nCompleted Actions:")
             for action in self.completed_actions:
                 report.append(f"  • {action}")
                 
         if self.failed_actions:
-            report.append("\n❌ Failed Actions:")
+            report.append("\nFailed Actions:")
             for failed in self.failed_actions:
                 report.append(f"  • {failed['action']}: {failed['error']}")
                 
         if self.warnings:
-            report.append("\n⚠️  Warnings:")
+            report.append("\nWarnings:")
             for warning in self.warnings:
                 report.append(f"  • {warning}")
                 

@@ -306,7 +306,7 @@ class MultiPackageUpdateAction(Action):
                                         default_branch: str) -> str:
         """Generate enhanced MR description with both package updates and migrations."""
         description_lines = [
-            "## 📦 Package Updates",
+            "## Package Updates",
             ""
         ]
         
@@ -328,7 +328,7 @@ class MultiPackageUpdateAction(Action):
         # Add migration details if applicable
         if migration_result and migration_result.success:
             description_lines.extend([
-                "## 🔧 Code Migrations",
+                "## Code Migrations",
                 ""
             ])
             

@@ -268,10 +268,10 @@ namespace WebApp
 
 The migration tool will handle:
 
-- ✅ Remove `AddDelegatingHandler` calls
-- ✅ Replace `AddMvc` with `AddControllers`
-- ✅ Update parameter types
-- ✅ Replace JSON serialization calls
+- Remove `AddDelegatingHandler` calls
+- Replace `AddMvc` with `AddControllers`
+- Update parameter types
+- Replace JSON serialization calls
 
 ### 2. Manual Changes Required
 

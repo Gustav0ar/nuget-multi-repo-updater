@@ -75,20 +75,20 @@ def run_all_tests():
     unit_success = run_unit_tests()
     
     if unit_success:
-        print("\n✅ Unit tests passed!")
+        print("\nUnit tests passed!")
         
         # Run integration tests
         integration_success = run_integration_tests()
         
         if integration_success:
-            print("\n✅ All tests passed!")
-            print("\n🎉 Migration feature implementation is ready for deployment!")
+            print("\nAll tests passed!")
+            print("\nMigration feature implementation is ready for deployment!")
             return True
         else:
-            print("\n❌ Integration tests failed!")
+            print("\nIntegration tests failed!")
             return False
     else:
-        print("\n❌ Unit tests failed!")
+        print("\nUnit tests failed!")
         return False
 
 
