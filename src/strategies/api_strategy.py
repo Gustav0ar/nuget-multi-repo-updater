@@ -114,43 +114,101 @@ class ApiStrategy(RepositoryStrategy):
         """Execute C# migration tool for API strategy by downloading files, processing, and uploading."""
         from src.services.code_migration_service import CodeMigrationService
         import json
+
+        def prefilter_remote_files(files: List[str], rules: List[dict]) -> List[str]:
+            """Try to reduce the file set using the provider's code search, if available."""
+            try:
+                migration_service = CodeMigrationService("./CSharpMigrationTool")
+                terms = migration_service.extract_search_terms(rules)
+                if not terms:
+                    return files
+
+                search_fn = getattr(self.scm_provider, 'search_code_blobs', None)
+                if not callable(search_fn):
+                    return files
+
+                file_set = set(files)
+                matched: set[str] = set()
+                for term in terms:
+                    for path in search_fn(repo_id, term, ref=branch_name):
+                        if path in file_set:
+                            matched.add(path)
+
+                return sorted(matched)
+            except Exception:
+                return files
         
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
-                # Download all target files
-                local_files = []
-                for file_path in target_files:
-                    content = self.scm_provider.get_file_content(repo_id, file_path, ref=branch_name)
-                    if content:
-                        local_file_path = os.path.join(temp_dir, os.path.basename(file_path))
-                        # newline='' disables platform newline translation (critical on Windows)
-                        with open(local_file_path, 'w', encoding='utf-8', newline='') as f:
-                            f.write(content)
-                        local_files.append(local_file_path)
-                
                 # Load rules from file
                 with open(rules_file, 'r') as f:
                     rules_data = json.load(f)
                 rules = rules_data.get('rules', [])
+
+                # Prefilter before downloading to avoid unnecessary API calls/tool runs
+                filtered_target_files = prefilter_remote_files(target_files, rules)
+                if not filtered_target_files:
+                    from src.services.code_migration_service import MigrationResult
+                    return MigrationResult(
+                        success=True,
+                        modified_files=[],
+                        applied_rules=[],
+                        errors=[],
+                        summary="No candidate files matched migration search terms"
+                    )
+
+                if len(filtered_target_files) != len(target_files):
+                    logging.info(
+                        f"Code migration prefilter (API): {len(filtered_target_files)}/{len(target_files)} files selected"
+                    )
+
+                # Download all target files
+                local_files = []
+                local_to_remote: Dict[str, str] = {}
+                for file_path in filtered_target_files:
+                    content = self.scm_provider.get_file_content(repo_id, file_path, ref=branch_name)
+                    if content:
+                        # Preserve relative paths to avoid basename collisions
+                        local_file_path = os.path.join(temp_dir, file_path)
+                        os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                        # newline='' disables platform newline translation (critical on Windows)
+                        with open(local_file_path, 'w', encoding='utf-8', newline='') as f:
+                            f.write(content)
+                        local_files.append(local_file_path)
+                        local_to_remote[local_file_path] = file_path
                 
                 # Execute migration tool
                 migration_service = CodeMigrationService("./CSharpMigrationTool")
                 result = migration_service.execute_migrations(local_files, rules, temp_dir)
-                
-                # Map local modified files back to original paths
+
+                # If migrations succeeded, upload modified files back to the repository while temp_dir exists.
                 if result.success and result.modified_files:
-                    original_modified_files = []
+                    uploaded_remote_paths: List[str] = []
                     for local_file in result.modified_files:
-                        basename = os.path.basename(local_file)
-                        # Find the original file path
-                        for original_path in target_files:
-                            if os.path.basename(original_path) == basename:
-                                original_modified_files.append(original_path)
-                                break
-                    
-                    # Update the result with original file paths
-                    result.modified_files = original_modified_files
+                        remote_path = local_to_remote.get(local_file)
+                        if not remote_path:
+                            continue
+
+                        try:
+                            content = Path(local_file).read_text(encoding='utf-8', errors='strict', newline='')
+                        except Exception as e:
+                            logging.error(f"Failed to read migrated temp file {local_file}: {e}")
+                            result.success = False
+                            result.errors.append(f"Failed to read migrated temp file for {remote_path}: {e}")
+                            continue
+
+                        commit_message = f"Apply code migration to {os.path.basename(remote_path)}"
+                        ok = self.scm_provider.update_file(repo_id, remote_path, content, commit_message, branch_name)
+                        if ok:
+                            uploaded_remote_paths.append(remote_path)
+                        else:
+                            result.success = False
+                            result.errors.append(f"Failed to upload migrated file: {remote_path}")
+                
+                # For API strategy, report the repo paths that were uploaded.
+                if result.modified_files:
+                    result.modified_files = uploaded_remote_paths if 'uploaded_remote_paths' in locals() else []
                 
                 return result
                 

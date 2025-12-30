@@ -213,7 +213,31 @@ class LocalCloneStrategy(RepositoryStrategy):
         # Execute migration tool
         csharp_tool_path = os.path.abspath("CSharpMigrationTool")
         migration_service = CodeMigrationService(csharp_tool_path)
-        return migration_service.execute_migrations(target_files, rules, self.git_service.local_path)
+
+        # Prefilter to avoid running migrations on every file.
+        # This is especially important for large repos.
+        repo_root = self.git_service.local_path
+        if repo_root:
+            filtered_files = migration_service.prefilter_target_files_local(
+                target_files,
+                rules,
+                repo_root,
+            )
+        else:
+            filtered_files = target_files
+
+        if not filtered_files:
+            from src.services.code_migration_service import MigrationResult
+            return MigrationResult(
+                success=True,
+                modified_files=[],
+                applied_rules=[],
+                errors=[],
+                summary="No candidate files matched migration search terms"
+            )
+
+        logging.info(f"Code migration prefilter: {len(filtered_files)}/{len(target_files)} files selected")
+        return migration_service.execute_migrations(filtered_files, rules, self.git_service.local_path)
 
     def _delete_branch_if_exists(self, branch_name: str, default_branch: str):
         """Rollback: Delete created branch and return to default branch."""

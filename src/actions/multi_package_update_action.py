@@ -224,8 +224,8 @@ class MultiPackageUpdateAction(Action):
                         repo_id, migration_result.modified_files, commit_message, branch_name
                     )
                 else:
-                    # For API strategy, upload modified files
-                    self._upload_migrated_files(repo_id, migration_result.modified_files, branch_name)
+                    # For API strategy, the strategy uploads modified files during execution.
+                    pass
 
                 logging.info(f"Code migrations completed: {len(migration_result.applied_rules)} rules applied")
             else:
@@ -248,14 +248,16 @@ class MultiPackageUpdateAction(Action):
 
     def _upload_migrated_files(self, repo_id: str, modified_files: List[str], branch_name: str):
         """Upload migrated files for API strategy."""
+        # In API mode, modified_files are repository paths.
+        # The strategy is responsible for persisting updated content remotely.
         for file_path in modified_files:
             try:
-                # Read the modified file content
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
                 # Upload to repository
                 commit_message = f"Apply code migration to {os.path.basename(file_path)}"
+                content = self.strategy.get_file_content(repo_id, file_path, branch_name)
+                if content is None:
+                    raise Exception(f"Failed to read migrated content for {file_path}")
+
                 self.strategy.update_file(repo_id, file_path, content, commit_message, branch_name)
                 
             except Exception as e:

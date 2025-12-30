@@ -8,6 +8,7 @@ import tempfile
 import os
 import platform
 import time
+import shutil
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -314,6 +315,210 @@ class CodeMigrationService:
                 cmd.extend(['--working-directory', self._normalize_path_for_subprocess(working_directory)])
                 
             return cmd, True
+
+    @staticmethod
+    def extract_search_terms(migration_rules: List[Dict[str, Any]]) -> List[str]:
+        """Extract plain-text search terms from migration rules.
+
+        The goal is to quickly pre-filter candidate files before invoking the C# tool.
+        We intentionally keep this conservative: it prefers identifier-like strings
+        (method/type/namespace names) and ignores obviously non-code values.
+        """
+
+        def is_useful_term(value: str) -> bool:
+            if not value:
+                return False
+            if any(ch.isspace() for ch in value):
+                return False
+            if len(value) < 3 or len(value) > 200:
+                return False
+            if not any(ch.isalpha() for ch in value):
+                return False
+            return True
+
+        terms: List[str] = []
+        seen = set()
+
+        def add_term(value: Optional[str]):
+            if not isinstance(value, str):
+                return
+            if not is_useful_term(value):
+                return
+            if value in seen:
+                return
+            seen.add(value)
+            terms.append(value)
+
+        def walk(obj: Any):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    # Prefer known keys first
+                    if k in {
+                        'method_name',
+                        'replacement_method',
+                        'containing_type',
+                        'containing_namespace',
+                        'type_name',
+                        'namespace',
+                        'old_namespace',
+                        'new_namespace',
+                        'old_type',
+                        'new_type',
+                    }:
+                        add_term(v)
+                    walk(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    walk(item)
+
+        # Only collect from known keys; do not add every string leaf.
+        # This keeps the prefilter precise and avoids matching unrelated files.
+
+        walk(migration_rules)
+        return terms
+
+    def prefilter_target_files_local(
+        self,
+        target_files: List[str],
+        migration_rules: List[Dict[str, Any]],
+        repo_root: str,
+        *,
+        prefer_ripgrep: bool = True,
+        max_patterns_per_call: int = 25,
+    ) -> List[str]:
+        """Prefilter local files by searching for migration-related terms.
+
+        Uses ripgrep when available for speed; falls back to a Python substring scan.
+        Returns a subset of target_files.
+        """
+
+        if not target_files:
+            return []
+
+        terms = self.extract_search_terms(migration_rules)
+        if not terms:
+            return target_files
+
+        # Normalize target files to absolute paths for consistent matching.
+        repo_root_path = Path(repo_root)
+        target_abs = set()
+        for file_path in target_files:
+            p = Path(file_path)
+            if not p.is_absolute():
+                p = repo_root_path / p
+            target_abs.add(str(p.resolve()))
+
+        rg = shutil.which('rg') if prefer_ripgrep else None
+        if rg:
+            matched: set[str] = set()
+
+            # Chunk patterns to avoid huge command lines.
+            for i in range(0, len(terms), max_patterns_per_call):
+                chunk = terms[i:i + max_patterns_per_call]
+                cmd = [
+                    rg,
+                    '-l',
+                    '-F',
+                ]
+                for term in chunk:
+                    cmd.extend(['-e', term])
+                cmd.extend([
+                    '--glob', '*.cs',
+                    str(repo_root_path),
+                ])
+
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        cwd=str(repo_root_path),
+                    )
+                except Exception:
+                    rg = None
+                    break
+
+                # rg returns exit code 0 when matches exist, 1 when none.
+                if result.returncode in (0, 1):
+                    for line in (result.stdout or '').splitlines():
+                        if not line:
+                            continue
+                        p = Path(line)
+                        if not p.is_absolute():
+                            p = (repo_root_path / p)
+                        try:
+                            matched.add(str(p.resolve()))
+                        except Exception:
+                            matched.add(str(p))
+                else:
+                    # Unexpected error; fall back.
+                    rg = None
+                    break
+
+            if rg:
+                filtered = [p for p in target_abs if p in matched]
+                return sorted(filtered)
+
+        grep = shutil.which('grep')
+        if grep:
+            matched: set[str] = set()
+
+            for i in range(0, len(terms), max_patterns_per_call):
+                chunk = terms[i:i + max_patterns_per_call]
+                cmd = [
+                    grep,
+                    '-r',
+                    '-l',
+                    '-F',
+                    '--include=*.cs',
+                ]
+                for term in chunk:
+                    cmd.extend(['-e', term])
+                cmd.append(str(repo_root_path))
+
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        cwd=str(repo_root_path),
+                    )
+                except Exception:
+                    grep = None
+                    break
+
+                # grep returns 0 when matches exist, 1 when none.
+                if result.returncode in (0, 1):
+                    for line in (result.stdout or '').splitlines():
+                        if not line:
+                            continue
+                        p = Path(line)
+                        if not p.is_absolute():
+                            p = (repo_root_path / p)
+                        try:
+                            matched.add(str(p.resolve()))
+                        except Exception:
+                            matched.add(str(p))
+                else:
+                    grep = None
+                    break
+
+            if grep:
+                filtered = [p for p in target_abs if p in matched]
+                return sorted(filtered)
+
+        # Fallback: substring scan
+        filtered = []
+        for abs_path in target_abs:
+            try:
+                text = Path(abs_path).read_text(encoding='utf-8', errors='ignore', newline='')
+            except Exception:
+                continue
+            if any(term in text for term in terms):
+                filtered.append(abs_path)
+        return sorted(filtered)
         
     def execute_migrations(self, target_files: List[str], migration_rules: List[Dict[str, Any]],
                           working_directory: str = None) -> MigrationResult:
@@ -346,24 +551,30 @@ class CodeMigrationService:
             )
 
         overall_success = True
-        all_modified_files = []
-        all_applied_rules = []
-        all_errors = []
+        all_modified_files: List[str] = []
+        all_applied_rules: List[str] = []
+        all_errors: List[str] = []
 
-        # TODO: Implement batching for larger sets of files (e.g., 5 or 10 at a time)
-        for target_file in target_files:
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as rules_file:
-                    json.dump({'rules': migration_rules}, rules_file, indent=2)
-                    rules_file_path = rules_file.name
+        # Write rules once and execute the tool in batches to reduce process spawn overhead.
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as rules_file:
+            json.dump({'rules': migration_rules}, rules_file, indent=2)
+            rules_file_path = rules_file.name
 
+        def chunk_files(files: List[str], size: int) -> List[List[str]]:
+            return [files[i:i + size] for i in range(0, len(files), size)]
+
+        # Conservative default to avoid command-line length limits on Windows.
+        batch_size = 20 if platform.system().lower() == 'windows' else 50
+
+        try:
+            for batch in chunk_files(target_files, batch_size):
                 try:
-                    cmd, use_dotnet_run = self._prepare_command(rules_file_path, [target_file], working_directory)
+                    cmd, use_dotnet_run = self._prepare_command(rules_file_path, batch, working_directory)
 
                     if use_dotnet_run:
-                        logging.info(f"Using 'dotnet run' for {target_file}: {' '.join(cmd)}")
+                        logging.info(f"Using 'dotnet run' for {len(batch)} files")
                     else:
-                        logging.info(f"Using pre-built executable for {target_file}: {' '.join(cmd)}")
+                        logging.info(f"Using pre-built executable for {len(batch)} files")
 
                     result = subprocess.run(
                         cmd,
@@ -384,36 +595,34 @@ class CodeMigrationService:
                                 all_errors.extend(output_data.get('errors', []))
                         except json.JSONDecodeError as e:
                             overall_success = False
-                            logging.error(f"Failed to parse C# tool output for {target_file}: {e}")
+                            logging.error(f"Failed to parse C# tool output: {e}")
                             logging.error(f"Tool output: {result.stdout}")
-                            all_errors.append(f"Failed to parse tool output for {target_file}: {e}")
+                            all_errors.append(f"Failed to parse tool output: {e}")
                     else:
                         overall_success = False
-                        logging.error(f"C# migration tool failed for {target_file} with exit code {result.returncode}")
+                        logging.error(f"C# migration tool failed with exit code {result.returncode}")
                         logging.error(f"Tool stderr: {result.stderr}")
-                        all_errors.append(f"Tool execution failed for {target_file}: {result.stderr}")
+                        all_errors.append(f"Tool execution failed: {result.stderr}")
 
-                finally:
-                    try:
-                        os.unlink(rules_file_path)
-                    except Exception as e:
-                        logging.warning(f"Failed to clean up temporary rules file: {e}")
+                except subprocess.TimeoutExpired:
+                    overall_success = False
+                    all_errors.append(f"Migration tool execution timed out for batch of {len(batch)} files")
+                except Exception as e:
+                    overall_success = False
+                    all_errors.append(f"Execution error for batch of {len(batch)} files: {str(e)}")
 
-            except subprocess.TimeoutExpired:
-                overall_success = False
-                logging.error(f"C# migration tool timed out for {target_file}")
-                all_errors.append(f"Migration tool execution timed out for {target_file}")
+        finally:
+            try:
+                os.unlink(rules_file_path)
             except Exception as e:
-                overall_success = False
-                logging.error(f"Failed to execute C# migration tool for {target_file}: {e}")
-                all_errors.append(f"Execution error for {target_file}: {str(e)}")
+                logging.warning(f"Failed to clean up temporary rules file: {e}")
 
         return MigrationResult(
             success=overall_success,
             modified_files=all_modified_files,
             applied_rules=all_applied_rules,
             errors=all_errors,
-            summary="Migration process completed for all files."
+            summary="Migration process completed."
         )
             
     def validate_tool_availability(self) -> bool:

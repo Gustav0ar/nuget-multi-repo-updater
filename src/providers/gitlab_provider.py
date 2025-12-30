@@ -281,6 +281,65 @@ class GitLabProvider(ScmProvider):
         logging.info(f"Total files fetched from repository tree: {len(all_items)}")
         return all_items
 
+    def search_code_blobs(self, project_id: str, search: str, ref: Optional[str] = None) -> List[str]:
+        """Search repository blobs for a plain-text term.
+
+        Returns a list of file paths that contain the search term.
+
+        Notes:
+        - This uses GitLab's project search API (scope=blobs).
+        - Some GitLab versions may not support 'ref' here; if it fails, we retry without it.
+        """
+        encoded_project_id = quote(str(project_id), safe='')
+        url = f"{self.gitlab_url}/api/v4/projects/{encoded_project_id}/search"
+
+        def do_search(include_ref: bool) -> List[str]:
+            all_paths: List[str] = []
+            seen = set()
+            page = 1
+            per_page = 100
+            while True:
+                params = {
+                    'scope': 'blobs',
+                    'search': search,
+                    'per_page': per_page,
+                    'page': page,
+                }
+                if include_ref and ref:
+                    params['ref'] = ref
+
+                response = self._make_request('get', url, params=params)
+                items = response.json()
+                if not items:
+                    break
+
+                for item in items:
+                    path = item.get('path') or item.get('filename')
+                    if not path:
+                        continue
+                    if path in seen:
+                        continue
+                    seen.add(path)
+                    all_paths.append(path)
+
+                if len(items) < per_page:
+                    break
+                page += 1
+
+            return all_paths
+
+        try:
+            # Prefer searching the requested branch/ref when supported.
+            return do_search(include_ref=True)
+        except (requests.RequestException, RateLimitExceeded) as e:
+            # Retry without ref for GitLab instances that don't support it.
+            logging.warning(f"Blob search with ref failed for {project_id} (retrying without ref): {e}")
+            try:
+                return do_search(include_ref=False)
+            except Exception as e2:
+                logging.error(f"Blob search failed for {project_id}: {e2}")
+                return []
+
     def get_file_content(self, project_id: str, file_path: str, ref: str = "main") -> Optional[str]:
         """Get file content from repository."""
         # URL encode the project_id to handle paths like "group/project"
