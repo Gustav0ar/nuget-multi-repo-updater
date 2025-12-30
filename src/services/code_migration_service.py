@@ -40,6 +40,7 @@ class CodeMigrationService:
     def __init__(self, csharp_tool_path: str):
         self.csharp_tool_path = csharp_tool_path
         self._cached_executable_path: Optional[str] = None
+        self._cached_executable_mtime: Optional[float] = None
         
     def _normalize_path_for_subprocess(self, path: str) -> str:
         """Normalize path for subprocess compatibility across platforms."""
@@ -83,28 +84,36 @@ class CodeMigrationService:
     def _is_tool_outdated(self, tool_dir: Path, executable_path: Path) -> bool:
         """Return True if the tool binary is older than its sources.
 
-        This prevents using stale binaries that can apply old/buggy transformations.
+        We treat *any* relevant project input file change as requiring a rebuild.
         """
         try:
+            if not tool_dir.exists() or not tool_dir.is_dir():
+                return True
+
             if not executable_path.exists():
                 return True
 
             exe_mtime = executable_path.stat().st_mtime
 
-            # Consider csproj + key source files. (Cheap and sufficient for this repo.)
-            inputs = []
-            inputs.extend(tool_dir.glob('*.csproj'))
-            inputs.append(tool_dir / 'Program.cs')
-            inputs.append(tool_dir / 'Services' / 'MigrationEngine.cs')
-            inputs.append(tool_dir / 'Models' / 'MigrationModels.cs')
+            ignore_dirs = {'bin', 'obj', '.git'}
+            relevant_suffixes = {'.cs', '.csproj', '.props', '.targets'}
 
-            for path in inputs:
-                if path.exists() and path.stat().st_mtime > exe_mtime:
+            for path in tool_dir.rglob('*'):
+                try:
+                    if not path.is_file():
+                        continue
+                    if any(part in ignore_dirs for part in path.parts):
+                        continue
+                    if path.suffix not in relevant_suffixes:
+                        continue
+                    if path.stat().st_mtime > exe_mtime:
+                        return True
+                except OSError:
+                    # If a file disappears mid-scan, assume safe rebuild.
                     return True
 
             return False
         except Exception:
-            # If we can't tell, err on the safe side and rebuild.
             return True
 
     def _verify_executable_works(self, executable_path: Path) -> bool:
@@ -131,11 +140,21 @@ class CodeMigrationService:
 
     def _get_executable_path(self) -> Optional[str]:
         """Get the path to the executable, building if necessary."""
-        # Return cached path if we already found it
+        tool_path = Path(self.csharp_tool_path)
+        tool_dir = tool_path.parent if tool_path.is_file() else tool_path
+
+        # Return cached path if we already found it, but only if still up-to-date.
         if self._cached_executable_path:
-            return self._cached_executable_path
-            
-        tool_dir = Path(self.csharp_tool_path)
+            try:
+                cached_path = Path(self._cached_executable_path)
+                if cached_path.exists() and not self._is_tool_outdated(tool_dir, cached_path):
+                    if self._verify_executable_works(cached_path):
+                        return self._cached_executable_path
+            except Exception:
+                pass
+            # Cache is stale/broken; force rediscovery (and rebuild if needed).
+            self._cached_executable_path = None
+            self._cached_executable_mtime = None
         
         if not tool_dir.exists():
             logging.warning(f"CSharpMigrationTool directory not found: {tool_dir}")
@@ -188,6 +207,10 @@ class CodeMigrationService:
                             continue
 
                         self._cached_executable_path = self._normalize_path_for_subprocess(str(exe_path))
+                        try:
+                            self._cached_executable_mtime = exe_path.stat().st_mtime
+                        except OSError:
+                            self._cached_executable_mtime = None
                         logging.info(f"Found C# migration tool executable: {self._cached_executable_path}")
                         return self._cached_executable_path
         
