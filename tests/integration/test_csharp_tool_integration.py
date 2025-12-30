@@ -476,6 +476,8 @@ namespace TestProject
         assert 'services.AddAnalyzer(configuration, isAnalyzerEnabled)' not in migrated
         assert 'services.AddAnalyzer(configuration)' in migrated
         assert 'var isAnalyzerEnabled =' not in migrated
+        # Ensure we didn't leave an empty blank line behind.
+        assert '\n\n            services.AddAnalyzer' not in migrated
 
     def test_remove_argument_but_keep_local_if_still_used(self):
         """Remove isAnalyzerEnabled argument but keep its declaration if it is still used elsewhere."""

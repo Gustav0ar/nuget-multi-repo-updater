@@ -529,7 +529,10 @@ public class MigrationEngine
         var removed = false;
         foreach (var statement in localDeclStatements)
         {
-            var newRoot = updatedRoot.RemoveNode(statement, SyntaxRemoveOptions.KeepExteriorTrivia);
+            // KeepExteriorTrivia preserves the statement's trailing end-of-line trivia,
+            // which can leave an empty line behind. For unused local declarations,
+            // we want the whole line gone.
+            var newRoot = updatedRoot.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia);
             if (newRoot != null)
             {
                 updatedRoot = newRoot;
