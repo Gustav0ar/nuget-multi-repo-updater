@@ -50,6 +50,19 @@ class TestCSharpMigrationTool:
                 return tuple(int(x) for x in version_str.split('.'))
             except Exception:
                 return (0, 0)
+        
+        def verify_executable(path, use_dotnet=False):
+            """Verify that an executable works correctly."""
+            try:
+                import subprocess
+                if use_dotnet:
+                    cmd = ['dotnet', str(path), '--help']
+                else:
+                    cmd = [str(path), '--help']
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                return result.returncode == 0 and 'C# Code Migration Tool' in result.stdout
+            except Exception:
+                return False
 
         if bin_debug_dir.exists():
             target_framework_dirs = [d for d in bin_debug_dir.iterdir() if d.is_dir() and d.name.startswith('net')]
@@ -60,12 +73,14 @@ class TestCSharpMigrationTool:
                 exe_path_win = bin_dir / 'CSharpMigrationTool.exe'  # Windows executable
                 dll_path = bin_dir / 'CSharpMigrationTool.dll'
 
-                if exe_path.exists():
-                    return str(exe_path)
-                if exe_path_win.exists():
-                    return str(exe_path_win)
-                if dll_path.exists():
+                # Prefer .dll with dotnet since it's more portable
+                if dll_path.exists() and verify_executable(dll_path, use_dotnet=True):
                     return str(dll_path)
+                # Try native executables as fallback
+                if exe_path.exists() and verify_executable(exe_path, use_dotnet=False):
+                    return str(exe_path)
+                if exe_path_win.exists() and verify_executable(exe_path_win, use_dotnet=False):
+                    return str(exe_path_win)
         
         # If no built binary found, try to build the tool
         return self._build_tool_if_needed(tool_dir)
@@ -790,6 +805,111 @@ namespace TestProject
             print(f"Migration tool ran successfully, modified: {output_data['modified_files']}")
             print(f"Applied rules: {output_data['applied_rules']}")
             print(f"Number of rules applied: {len(output_data['applied_rules'])}")
+            
+        finally:
+            if os.path.exists(rules_file):
+                os.unlink(rules_file)
+                
+    def test_remove_invocation_preserves_region_markers(self):
+        """Test that removing invocations preserves #region/#endregion markers."""
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+            
+        # Create a C# file with #region markers around code to be removed
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public class RegionTestClass
+    {
+        public void TestMethod()
+        {
+            #region Initialization
+            DeprecatedMethod();
+            Console.WriteLine("Inside region");
+            #endregion
+            
+            #region Cleanup
+            DeprecatedMethod();
+            Console.WriteLine("Cleanup region");
+            #endregion
+        }
+        
+        private void DeprecatedMethod() { }
+    }
+}'''
+        
+        cs_file = os.path.join(self.project_dir, 'RegionTest.cs')
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+            
+        # Create rules to remove DeprecatedMethod calls
+        rules = [
+            {
+                'name': 'Remove DeprecatedMethod',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'DeprecatedMethod'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_invocation'
+                }
+            }
+        ]
+        
+        rules_file = self.create_migration_rules_file(rules)
+        
+        try:
+            if self.tool_path.endswith('.dll'):
+                cmd = [
+                    'dotnet', self.tool_path,
+                    '--rules-file', rules_file,
+                    '--target-file', cs_file,
+                    '--working-directory', self.project_dir
+                ]
+            else:
+                cmd = [
+                    self.tool_path,
+                    '--rules-file', rules_file,
+                    '--target-file', cs_file,
+                    '--working-directory', self.project_dir
+                ]
+                
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            output_data = json.loads(result.stdout)
+            
+            assert output_data['success'] or len(output_data.get('applied_rules', [])) > 0, \
+                f"Tool failed: {result.stderr}, Output: {result.stdout}"
+            
+            # Read the modified file
+            with open(cs_file, 'r') as f:
+                modified_content = f.read()
+            
+            # Critical: Verify #region markers are preserved
+            assert '#region Initialization' in modified_content, \
+                f"#region Initialization marker was incorrectly removed. Content:\n{modified_content}"
+            assert '#endregion' in modified_content, \
+                f"#endregion marker was incorrectly removed. Content:\n{modified_content}"
+            assert '#region Cleanup' in modified_content, \
+                f"#region Cleanup marker was incorrectly removed. Content:\n{modified_content}"
+            
+            # Verify DeprecatedMethod calls were actually removed
+            assert 'DeprecatedMethod()' not in modified_content or modified_content.count('DeprecatedMethod()') <= 1, \
+                f"DeprecatedMethod() invocations should be removed (only declaration should remain)"
+            
+            # Verify other code is preserved
+            assert 'Console.WriteLine' in modified_content, \
+                "Other code should be preserved"
+            
+            print(f"Region markers preserved successfully. Modified content:\n{modified_content}")
             
         finally:
             if os.path.exists(rules_file):

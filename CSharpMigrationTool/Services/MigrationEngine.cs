@@ -375,7 +375,8 @@ public class MigrationEngine
         if (parent is ExpressionStatementSyntax statement)
         {
             // This is a standalone statement, remove the entire statement
-            var newRoot = root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia);
+            // Use helper method that preserves preprocessor directives (#region, #endregion, etc.)
+            var newRoot = RemoveNodePreservingDirectives(root, statement);
             return (newRoot ?? root, newRoot != null);
         }
         else if (parent is MemberAccessExpressionSyntax memberAccess && memberAccess.Expression == invocation)
@@ -531,8 +532,8 @@ public class MigrationEngine
         {
             // KeepExteriorTrivia preserves the statement's trailing end-of-line trivia,
             // which can leave an empty line behind. For unused local declarations,
-            // we want the whole line gone.
-            var newRoot = updatedRoot.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia);
+            // we want the whole line gone, but preserve preprocessor directives.
+            var newRoot = RemoveNodePreservingDirectives(updatedRoot, statement);
             if (newRoot != null)
             {
                 updatedRoot = newRoot;
@@ -541,6 +542,88 @@ public class MigrationEngine
         }
 
         return (updatedRoot, removed);
+    }
+
+    /// <summary>
+    /// Removes a syntax node while preserving any preprocessor directives (#region, #endregion, #if, etc.)
+    /// in its leading trivia. These directives need to be preserved to maintain code structure.
+    /// </summary>
+    private static SyntaxNode? RemoveNodePreservingDirectives(SyntaxNode root, SyntaxNode nodeToRemove)
+    {
+        var leadingTrivia = nodeToRemove.GetLeadingTrivia();
+        var trailingTrivia = nodeToRemove.GetTrailingTrivia();
+        
+        // Check for preprocessor directives in leading trivia that must be preserved
+        var directivesToPreserve = leadingTrivia
+            .Where(t => t.IsDirective || 
+                       t.IsKind(SyntaxKind.RegionDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.EndRegionDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.IfDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.ElseDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.EndIfDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.PragmaWarningDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.PragmaChecksumDirectiveTrivia))
+            .ToList();
+        
+        // Also check trailing trivia for directives (less common but possible)
+        var trailingDirectives = trailingTrivia
+            .Where(t => t.IsDirective || 
+                       t.IsKind(SyntaxKind.RegionDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.EndRegionDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.IfDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.ElseDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.EndIfDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.PragmaWarningDirectiveTrivia) ||
+                       t.IsKind(SyntaxKind.PragmaChecksumDirectiveTrivia))
+            .ToList();
+        
+        if (!directivesToPreserve.Any() && !trailingDirectives.Any())
+        {
+            // No directives to preserve, use standard removal
+            return root.RemoveNode(nodeToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+        }
+        
+        // Find the next sibling node to attach the preserved directives to
+        var parent = nodeToRemove.Parent;
+        if (parent == null)
+        {
+            return root.RemoveNode(nodeToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+        }
+        
+        var siblings = parent.ChildNodes().ToList();
+        var nodeIndex = siblings.IndexOf(nodeToRemove);
+        var nextSibling = nodeIndex >= 0 && nodeIndex < siblings.Count - 1 
+            ? siblings[nodeIndex + 1] 
+            : null;
+        
+        if (nextSibling != null)
+        {
+            // Build the preserved trivia list: directives + end of line
+            var preservedTrivia = new List<SyntaxTrivia>();
+            preservedTrivia.AddRange(directivesToPreserve);
+            preservedTrivia.AddRange(trailingDirectives);
+            
+            // Combine with the next sibling's existing leading trivia
+            var existingLeadingTrivia = nextSibling.GetLeadingTrivia();
+            var combinedTrivia = SyntaxFactory.TriviaList(preservedTrivia.Concat(existingLeadingTrivia));
+            
+            // Replace the next sibling with one that has the combined trivia
+            var newNextSibling = nextSibling.WithLeadingTrivia(combinedTrivia);
+            root = root.ReplaceNode(nextSibling, newNextSibling);
+            
+            // Now remove the original node (need to find it again in the modified tree)
+            var updatedNodeToRemove = root.DescendantNodesAndSelf()
+                .FirstOrDefault(n => n.Span.Start == nodeToRemove.Span.Start && 
+                                     n.IsKind(nodeToRemove.Kind()));
+            
+            if (updatedNodeToRemove != null)
+            {
+                return root.RemoveNode(updatedNodeToRemove, SyntaxRemoveOptions.KeepNoTrivia);
+            }
+        }
+        
+        // Fallback: if we couldn't transfer directives, use KeepLeadingTrivia to preserve them
+        return root.RemoveNode(nodeToRemove, SyntaxRemoveOptions.KeepLeadingTrivia);
     }
 
     private InvocationExpressionSyntax ReplaceMethodName(InvocationExpressionSyntax invocation, string newMethodName)
