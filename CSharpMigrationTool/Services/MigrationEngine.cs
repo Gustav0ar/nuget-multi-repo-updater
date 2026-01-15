@@ -472,8 +472,20 @@ public class MigrationEngine
                     if (arg.Expression is IdentifierNameSyntax id &&
                         string.Equals(id.Identifier.ValueText, argumentName, StringComparison.Ordinal))
                     {
-                        args = args.RemoveAt(i);
-                        changedThisInvocation = true;
+                        // Only remove the argument if it's safe to do so:
+                        // 1. It's a named argument (has NameColon), OR
+                        // 2. It's the last argument in the list, OR
+                        // 3. All arguments after it are also named arguments
+                        var isNamedArgument = arg.NameColon != null;
+                        var isLastArgument = i == args.Count - 1;
+                        var allFollowingAreNamed = args.Skip(i + 1).All(a => a.NameColon != null);
+                        
+                        if (isNamedArgument || isLastArgument || allFollowingAreNamed)
+                        {
+                            args = args.RemoveAt(i);
+                            changedThisInvocation = true;
+                        }
+                        // If not safe to remove, skip this argument to avoid breaking positional order
                     }
                 }
 

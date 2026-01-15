@@ -560,6 +560,134 @@ namespace TestProject
         assert 'services.AddAnalyzer(configuration)' in migrated
         assert 'var isAnalyzerEnabled =' in migrated
         assert 'if (isAnalyzerEnabled)' in migrated
+
+    def test_remove_argument_preserves_positional_order(self):
+        """Remove argument should NOT remove middle positional arguments to avoid breaking call order."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'PositionalArgOrder.cs')
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public static class Extensions
+    {
+        public static object Configure(this object services, string name, bool enabled, int timeout) => services;
+    }
+
+    public sealed class Test
+    {
+        public void Setup(object services)
+        {
+            var enabled = true;
+            var timeout = 30;
+            // enabled is in the middle - removing it would break positional argument order
+            services.Configure("test", enabled, timeout);
+        }
+    }
+}
+'''
+
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+
+        rules = [
+            {
+                'name': 'Try to remove enabled flag (should be skipped)',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'Configure'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_argument',
+                    'argument_name': 'enabled'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        # Tool should succeed but NOT modify the file (argument not removed to preserve order)
+        output_data = json.loads(result.stdout)
+        
+        migrated = Path(cs_file).read_text(encoding='utf-8', newline='')
+        # The middle positional argument should NOT be removed
+        assert 'services.Configure("test", enabled, timeout)' in migrated, \
+            f"Middle positional argument was incorrectly removed! Content:\n{migrated}"
+        
+    def test_remove_argument_allows_last_positional(self):
+        """Remove argument SHOULD work when it's the last positional argument."""
+
+        if not self.tool_path:
+            pytest.skip("C# migration tool not available")
+
+        cs_file = os.path.join(self.project_dir, 'LastPositionalArg.cs')
+        cs_content = '''using System;
+
+namespace TestProject
+{
+    public static class Extensions
+    {
+        public static object Configure(this object services, string name, int timeout) => services;
+    }
+
+    public sealed class Test
+    {
+        public void Setup(object services)
+        {
+            var timeout = 30;
+            // timeout is last - safe to remove
+            services.Configure("test", timeout);
+        }
+    }
+}
+'''
+
+        with open(cs_file, 'w') as f:
+            f.write(cs_content)
+
+        rules = [
+            {
+                'name': 'Remove timeout (last argument)',
+                'target_nodes': [
+                    {
+                        'type': 'InvocationExpression',
+                        'method_name': 'Configure'
+                    }
+                ],
+                'action': {
+                    'type': 'remove_argument',
+                    'argument_name': 'timeout'
+                }
+            }
+        ]
+
+        rules_file = self.create_migration_rules_file(rules)
+
+        if self.tool_path.endswith('.dll'):
+            cmd = ['dotnet', self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+        else:
+            cmd = [self.tool_path, '--rules-file', rules_file, '--target-file', cs_file]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        output_data = json.loads(result.stdout)
+        
+        migrated = Path(cs_file).read_text(encoding='utf-8', newline='')
+        # The last positional argument SHOULD be removed
+        assert 'services.Configure("test")' in migrated, \
+            f"Last positional argument should be removed! Content:\n{migrated}"
+        assert 'timeout' not in migrated or 'var timeout' not in migrated, \
+            "Unused timeout variable should be removed"
         
     def test_remove_invocation_rule(self):
         """Test removing method invocations."""

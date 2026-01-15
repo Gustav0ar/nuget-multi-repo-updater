@@ -215,7 +215,7 @@ import os
 import shutil
 
 if os.path.exists("complex_project"):
-    shutil.rmtree("complex_project")
+    shutil.rmtree("complex_project")+
 
 os.makedirs("complex_project", exist_ok=True)
 with open("complex_project/ComplexProject.csproj", "w") as f:
